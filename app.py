@@ -3,172 +3,162 @@ import pandas as pd
 import json
 import os
 from datetime import datetime
+from settrade_v2.user import Investor
 
 # ==========================================
-# ⚙️ CONFIGURATION & SETUP
+# ⚙️ CONFIGURATION & UI SETUP
 # ==========================================
 st.set_page_config(
     page_title="GeminiBo Engineer",
-    page_icon="🏗️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_icon="🤖",
+    layout="wide"
 )
 
-# ไฟล์เก็บข้อมูล
+# --- ระบบกุญแจลับ (Streamlit Secrets) ---
+# วิธีใช้: ใส่ใน Advanced Settings ของ Streamlit Cloud
+try:
+    APP_ID = st.secrets["SETTRADE_APP_ID"]
+    APP_SECRET = st.secrets["SETTRADE_APP_SECRET"]
+except:
+    # สำหรับรันในเครื่องตัวเอง (Local) ให้แก้รหัสตรงนี้ครับ
+    APP_ID = "A6ci0gEXKmkRPwRY"
+    APP_SECRET = "AMZcHrk9Ytvyj+UPO7BDgvpZ5Cjy8h0H8ocZoNQ6aQPK"
+
 DB_FILE = 'data.json'
 
-# ฟังก์ชันโหลด/บันทึกข้อมูล
+# --- ฟังก์ชันโหลด/บันทึกข้อมูล ---
 def load_data():
-    if not os.path.exists(DB_FILE):
-        return []
-    with open(DB_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    if not os.path.exists(DB_FILE): return []
+    with open(DB_FILE, 'r', encoding='utf-8') as f: return json.load(f)
 
 def save_data(data):
-    with open(DB_FILE, 'w', encoding='utf-8') as f:
+    with open(DB_FILE, 'w', encoding='utf-8') as f: 
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 # ==========================================
-# 🎨 SIDEBAR MENU
+# 📡 SETTRADE API CONNECTION
 # ==========================================
-st.sidebar.title("🏗️ GeminiBo Control")
-st.sidebar.info("Engineering Assistant Mode")
-menu = st.sidebar.radio("เลือกเมนูสั่งการ", ["🛡️ Market Sentinel", "📝 Trade Planner", "⚠️ Risk Manager"])
+@st.cache_resource # ช่วยให้ไม่ต้องต่อเน็ตใหม่ทุกครั้งที่กดปุ่ม
+def connect_settrade():
+    try:
+        investor = Investor(
+            app_id=APP_ID,
+            app_secret=APP_SECRET,
+            broker_id="SANDBOX",
+            app_code="SANDBOX",
+            is_auto_queue=False
+        )
+        return investor.MarketData()
+    except Exception as e:
+        st.error(f"❌ เชื่อมต่อ API ไม่สำเร็จ: {e}")
+        return None
 
-st.sidebar.markdown("---")
-st.sidebar.caption(f"Dev by พี่โบ้ | Ver 2.0 Web")
+market = connect_settrade()
 
 # ==========================================
-# 🛡️ MODULE 1: MARKET SENTINEL
+# 🎨 SIDEBAR & MENU
+# ==========================================
+st.sidebar.title("🏗️ GeminiBo v2.0")
+st.sidebar.caption("Engineering Trading System")
+menu = st.sidebar.radio("Main Menu", ["🛡️ Market Sentinel", "📝 Trade Planner", "⚠️ Risk Manager"])
+
+# ==========================================
+# 🛡️ MODULE 1: MARKET SENTINEL (Auto Real-time)
 # ==========================================
 if menu == "🛡️ Market Sentinel":
-    st.title("🛡️ Market Sentinel: เรดาร์จับเจ้ามือ")
-    st.markdown("วิเคราะห์พฤติกรรม Bid/Offer เพื่ออ่านเกมเจ้ามือ")
+    st.title("🛡️ Market Sentinel: อ่านใจเจ้ามือ (Real-time)")
+    
+    symbol = st.text_input("ระบุชื่อหุ้นที่ต้องการเจาะลึก", "PTT").upper()
+    
+    if st.button("🔍 สแกน Bid/Offer เดี๋ยวนี้", type="primary"):
+        if market:
+            quote = market.get_quote_symbol(symbol)
+            if quote and quote.get('last'):
+                # ส่วนหัวข้อราคา
+                c1, c2, c3 = st.columns(3)
+                c1.metric("ราคาล่าสุด", f"{quote['last']:.2f}", f"{quote.get('percent_change', 0)}%")
+                c2.metric("Volume รวม", f"{quote['total_volume']:,}")
+                c3.metric("เวลาอัปเดต", quote.get('time', '--:--'))
 
-    col1, col2 = st.columns(2)
-    with col1:
-        bid_vol = st.number_input("Bid Volume (ฝั่งรอซื้อ)", min_value=0, value=1000000, step=10000)
-    with col2:
-        offer_vol = st.number_input("Offer Volume (ฝั่งรอขาย)", min_value=0, value=10000000, step=10000)
+                st.markdown("---")
+                
+                # ส่วนตาราง Bid/Offer
+                col_bid, col_off = st.columns(2)
+                
+                with col_bid:
+                    st.subheader("BIDS (รอซื้อ)")
+                    bid_df = pd.DataFrame({
+                        "Volume": [quote[f'bid_volume{i}'] for i in range(1,6)],
+                        "Price": [quote[f'bid_price{i}'] for i in range(1,6)]
+                    })
+                    st.table(bid_df.style.format({"Volume": "{:,.0f}", "Price": "{:.2f}"}))
 
-    speed = st.radio("ความเร็ว Ticker (การไหลของคำสั่ง)", ["ช้า/ปกติ (Slow)", "เร็ว/รัวๆ (Fast)"])
+                with col_off:
+                    st.subheader("OFFERS (รอขาย)")
+                    off_df = pd.DataFrame({
+                        "Price": [quote[f'offer_price{i}'] for i in range(1,6)],
+                        "Volume": [quote[f'offer_volume{i}'] for i in range(1,6)]
+                    })
+                    st.table(off_df.style.format({"Volume": "{:,.0f}", "Price": "{:.2f}"}))
 
-    if st.button("🚀 วิเคราะห์สถานการณ์", type="primary"):
-        # Logic การคำนวณ
-        ratio = offer_vol / bid_vol if bid_vol > 0 else 0
-        
-        st.markdown("---")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Wall Ratio", f"{ratio:.2f} เท่า", delta_color="inverse")
-        
-        # แสดงผลลัพธ์
-        if ratio > 5 and "ช้า" in speed:
-            st.error("🚨 RESULT: SQUEEZE (การบีบของ)")
-            st.write("""
-            **อาการ:** Offer หนาปึ้ก แต่วอลลุ่มแห้ง
-            \n**กลยุทธ์:** 🛡️ เจ้ามือกดเก็บของ อย่าเพิ่งไล่ราคา ให้ตั้งรับลึกๆ
-            """)
-        elif ratio > 3 and "เร็ว" in speed:
-            st.success("🚀 RESULT: BREAKOUT ATTEMPT (งัดข้อ)")
-            st.write("""
-            **อาการ:** Offer หนา แต่มีคนเคาะขวารัวๆ
-            \n**กลยุทธ์:** ⚔️ จูงแพะติดมือ! ตามน้ำไม้เล็ก ลุ้นผ่านต้าน
-            """)
-        elif ratio < 0.5:
-            st.warning("🩸 RESULT: PANIC SELL (ทิ้งของ)")
-            st.write("""
-            **อาการ:** Bid บาง รับไม่อยู่ แรงขายเยอะ
-            \n**กลยุทธ์:** ⛔ ห้ามรับมีด! รอสร้างฐานใหม่
-            """)
-        else:
-            st.info("ℹ️ RESULT: NORMAL MARKET (ตลาดปกติ)")
-            st.write("เล่นตามกราฟเทคนิคทั่วไป")
+                # วิเคราะห์ Wall Ratio
+                top_bid = quote['bid_volume1']
+                top_offer = quote['offer_volume1']
+                ratio = top_offer / top_bid if top_bid > 0 else 0
+                
+                st.markdown("### 📊 วิเคราะห์เชิงวิศวกรรม")
+                st.write(f"**Wall Ratio (Offer/Bid):** {ratio:.2f} เท่า")
+                if ratio > 5:
+                    st.error("🚨 STATUS: SQUEEZE! (โดนขวางหนัก -> เจ้าเก็บของ/กดราคา)")
+                elif ratio < 0.2:
+                    st.warning("🩸 STATUS: PANIC/DUMP! (ระวังแรงเทขาย)")
+                else:
+                    st.success("ℹ️ STATUS: NORMAL (ตลาดปกติ)")
+            else:
+                st.warning("❌ ไม่พบข้อมูลหุ้นตัวนี้")
 
 # ==========================================
 # 📝 MODULE 2: TRADE PLANNER
 # ==========================================
 elif menu == "📝 Trade Planner":
     st.title("📝 Trade Planner: วางแผนเทรด")
-    st.markdown("คำนวณความคุ้มค่า (Risk:Reward) ก่อนเข้าทำ")
-
-    with st.form("trade_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            symbol = st.text_input("ชื่อหุ้น (Symbol)").upper()
-            shares = st.number_input("จำนวนหุ้น", min_value=100, step=100)
-        with col2:
-            entry_price = st.number_input("ราคาเข้า (Entry)", format="%.2f")
-            target_price = st.number_input("เป้าขาย (Target)", format="%.2f")
-            stop_loss = st.number_input("จุดตัดขาดทุน (Stop Loss)", format="%.2f")
+    
+    with st.form("plan_form"):
+        c1, c2 = st.columns(2)
+        sym = c1.text_input("ชื่อหุ้น").upper()
+        vol = c2.number_input("จำนวนหุ้น", 100)
+        ent = c1.number_input("ทุน", format="%.2f")
+        target = c2.number_input("เป้าขาย", format="%.2f")
+        sl = c1.number_input("Stop Loss", format="%.2f")
         
-        submitted = st.form_submit_button("💾 คำนวณและบันทึกแผน")
-
-        if submitted:
-            if entry_price > 0:
-                upside = (target_price - entry_price) * shares
-                downside = (entry_price - stop_loss) * shares
-                rr = upside / downside if downside > 0 else 0
-                
-                st.markdown("---")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("กำไรคาดหวัง (Profit)", f"{upside:,.0f} บ.", delta=f"+{(upside/shares/entry_price)*100:.2f}%")
-                c2.metric("ความเสี่ยง (Risk)", f"{downside:,.0f} บ.", delta=f"-{(downside/shares/entry_price)*100:.2f}%", delta_color="inverse")
-                c3.metric("R:R Ratio", f"{rr:.2f} เท่า")
-
-                if rr >= 2:
-                    st.success("✅ แผนสวย! คุ้มค่าความเสี่ยง (R:R > 2)")
-                    # Save to JSON
-                    new_data = {
-                        "symbol": symbol,
-                        "date": datetime.now().strftime("%Y-%m-%d"),
-                        "shares": shares,
-                        "entry_price": entry_price,
-                        "target_price": target_price,
-                        "stop_loss": stop_loss,
-                        "status": "Active"
-                    }
-                    data = load_data()
-                    data.append(new_data)
-                    save_data(data)
-                    st.toast(f"บันทึกแผน {symbol} เรียบร้อย!", icon="💾")
-                else:
-                    st.warning("⚠️ แผนนี้ไม่คุ้มเสี่ยง (R:R ต่ำกว่า 2) พิจารณาใหม่")
+        if st.form_submit_button("💾 บันทึกแผน"):
+            data = load_data()
+            data.append({
+                "symbol": sym, "date": datetime.now().strftime("%Y-%m-%d"),
+                "shares": vol, "entry_price": ent, 
+                "target_price": target, "stop_loss": sl, "status": "Active"
+            })
+            save_data(data)
+            st.toast(f"บันทึก {sym} สำเร็จ!")
 
 # ==========================================
 # ⚠️ MODULE 3: RISK MANAGER
 # ==========================================
 elif menu == "⚠️ Risk Manager":
-    st.title("⚠️ Risk Manager: ตรวจสุขภาพพอร์ต")
-    
+    st.title("⚠️ Risk Manager: เช็กสุขภาพพอร์ต")
     data = load_data()
-    if not data:
-        st.info("ยังไม่มีข้อมูลในพอร์ต ไปสร้างแผนก่อนนะครับ")
-    else:
-        # แปลงเป็น DataFrame เพื่อแสดงตารางสวยๆ
+    if data:
         df = pd.DataFrame(data)
         st.dataframe(df, use_container_width=True)
-
-        st.markdown("### 🔍 เช็กอาการรายตัว")
-        selected_stock = st.selectbox("เลือกหุ้นที่ต้องการเช็ก", df['symbol'].unique())
         
-        # ดึงข้อมูลหุ้นที่เลือก
-        stock_info = df[df['symbol'] == selected_stock].iloc[-1] # เอาล่าสุด
-        
-        current_price = st.number_input(f"ราคาปัจจุบันของ {selected_stock}", value=stock_info['entry_price'])
-        
-        # คำนวณ Time Stop
-        entry_date = datetime.strptime(stock_info['date'], "%Y-%m-%d")
-        days_held = (datetime.now() - entry_date).days
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("ทุน", f"{stock_info['entry_price']:.2f}")
-        col2.metric("ปัจจุบัน", f"{current_price:.2f}", delta=f"{current_price - stock_info['entry_price']:.2f}")
-        col3.metric("ถือมาแล้ว", f"{days_held} วัน")
-
-        # Logic เตือนภัย
-        if current_price <= stock_info['stop_loss']:
-            st.error(f"🚨 ALERT: หลุดจุดคัท {stock_info['stop_loss']} แล้ว! ต้องหนี!")
-        elif days_held >= 5 and current_price <= stock_info['entry_price']:
-            st.warning(f"⏳ TIME STOP: ถือมา {days_held} วันแล้วยังไม่วิ่ง พิจารณาเปลี่ยนตัวเล่น")
-        else:
-            st.success("✅ สถานะ: ปกติ ถือรันเทรนด์ต่อได้")
+        if st.button("🔄 อัปเดตราคาพอร์ตทั้งหมด (Real-time)"):
+            if market:
+                updated_prices = []
+                for s in df['symbol']:
+                    q = market.get_quote_symbol(s)
+                    updated_prices.append(q['last'] if q else 0)
+                df['Current'] = updated_prices
+                df['P/L'] = (df['Current'] - df['entry_price']) * df['shares']
+                st.dataframe(df[['symbol', 'shares', 'entry_price', 'Current', 'P/L']])
+    else:
+        st.info("ยังไม่มีข้อมูลพอร์ต")
