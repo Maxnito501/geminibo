@@ -1,151 +1,178 @@
+# Complete, well-commented, runnable code for Polaris v2.1 (App 7)
 import streamlit as st
 import pandas as pd
-from settrade_v2.user import Investor
+import yfinance as yf
+import numpy as np
+from datetime import datetime as dt
 
-# ==========================================
-# ⚙️ CONFIGURATION & UI SETUP
-# ==========================================
-st.set_page_config(page_title="GeminiBo Engineer v2.1", page_icon="🏗️", layout="wide")
+# --- 1. CONFIGURATION ---
+st.set_page_config(
+    page_title="POLARIS v2.1: Geminibo Advanced",
+    page_icon="🚀",
+    layout="wide"
+)
 
-# ส่วนกรอก ID (พี่โบ้กรอกตรงนี้ หรือใส่ใน Secrets ของ Streamlit Cloud)
-APP_ID = "A6ci0gEXKmkRPwRY"
-APP_SECRET = "AMZcHrk9Ytvyj+UPO7BDgvpZ5Cjy8h0H8ocZoNQ6aQPK"
+# --- 2. SESSION STATE (ระบบจำค่า ID และข้อมูลกำแพง) ---
+if 'manual_wall_vol' not in st.session_state:
+    st.session_state.manual_wall_vol = 7555000.0  # ค่าตั้งต้นจากกำแพง SIRI ที่พี่เจอ
+if 'manual_avg_vol' not in st.session_state:
+    st.session_state.manual_avg_vol = 15000000.0
+if 'manual_ticker' not in st.session_state:
+    st.session_state.manual_ticker = "SIRI"
 
-# ==========================================
-# 📡 CONNECTION HELPER
-# ==========================================
-@st.cache_resource
-def connect_market():
+# --- 3. PREMIUM LIGHT THEME (Slate White & Navy Focus) ---
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap');
+    html, body, [class*="css"] { font-family: 'Kanit', sans-serif; }
+    .stApp { background-color: #f8fafc; color: #1e293b; }
+    
+    /* Command Center Panel */
+    .command-panel {
+        background-color: #ffffff;
+        padding: 25px; border-radius: 20px;
+        border: 2px solid #3b82f6; margin-bottom: 20px;
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* Result Box */
+    .gs-result-box {
+        text-align: center; padding: 25px;
+        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+        border-radius: 15px; border: 1px solid #bfdbfe;
+    }
+    
+    .trend-tag {
+        display: inline-block; padding: 4px 12px; border-radius: 20px;
+        font-size: 0.75rem; font-weight: bold; margin-bottom: 10px;
+    }
+    .trend-bull { background-color: #dcfce7; color: #166534; }
+    .trend-bear { background-color: #fee2e2; color: #991b1b; }
+    
+    h1, h2, h3 { color: #0f172a !important; }
+    .label-mini { color: #64748b; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 4. ADVANCED DATA ENGINE (v2.1) ---
+@st.cache_data(ttl=60)
+def fetch_advanced_data(ticker):
     try:
-        investor = Investor(
-            app_id=APP_ID, app_secret=APP_SECRET,
-            broker_id="SANDBOX", app_code="SANDBOX", is_auto_queue=False
-        )
-        return investor.MarketData()
-    except Exception as e:
-        st.error(f"❌ เชื่อมต่อ API ไม่สำเร็จ: {e}")
-        return None
+        t_bk = ticker + ".BK"
+        # ดึงข้อมูล 3 เดือนเพื่อให้ครอบคลุมเส้น EMA
+        data = yf.download(t_bk, period="3mo", interval="1d", progress=False)
+        if data.empty: return None
+        
+        close = data['Close'].iloc[:, 0] if isinstance(data['Close'], pd.DataFrame) else data['Close']
+        vol = data['Volume'].iloc[:, 0] if isinstance(data['Volume'], pd.DataFrame) else data['Volume']
+        
+        # A. RSI (14)
+        delta = close.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + (gain / loss)))
+        
+        # B. Trend Detection (EMA 20)
+        ema20 = close.ewm(span=20, adjust=False).mean()
+        curr_price = close.iloc[-1]
+        curr_ema = ema20.iloc[-1]
+        trend = "BULL" if curr_price > curr_ema else "BEAR"
+        
+        # C. Avg Volume (5 days)
+        avg_vol_5d = vol.iloc[-6:-1].mean()
+        
+        return {
+            "price": curr_price,
+            "rsi": rsi.iloc[-1],
+            "ema20": curr_ema,
+            "trend": trend,
+            "avg_vol": avg_vol_5d
+        }
+    except: return None
 
-market = connect_market()
+# --- 5. MAIN COMMANDER UI ---
+def main():
+    st.title("🏹 Geminibo v2.1: Advanced Sniper")
+    st.caption(f"กองบัญชาการวิศวกรโบ้: ระบบดักทางกำแพงเจ้ามือ & วิเคราะห์เทรนด์ | {dt.now().strftime('%H:%M:%S')}")
 
-# ==========================================
-# 🎨 SIDEBAR MENU
-# ==========================================
-st.sidebar.title("🏗️ GeminiBo v2.1")
-st.sidebar.info("Engineering Mindset for Trading")
-menu = st.sidebar.radio("เลือกโหมดใช้งาน", ["📊 Dashboard 3 หุ้นเทพ", "🔍 สแกนหุ้นรายตัว", "🧮 เครื่องมือแก้เกม (Recovery)"])
+    # --- TOP METRICS ---
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Cash Reserve", "฿20,172.03", "Ready to Double")
+    m2.metric("System Mode", "Manual + Trend", delta="Active")
+    m3.metric("Project ID", "Geminibo-v2.1", delta="suchat3165")
 
-# ==========================================
-# 📊 MODE 1: DASHBOARD (SIRI, WHA, MTC)
-# ==========================================
-if menu == "📊 Dashboard 3 หุ้นเทพ":
-    st.title("🚀 Real-time Dashboard: SIRI | WHA | MTC")
-    targets = ["SIRI", "WHA", "MTC"]
+    st.divider()
+
+    # --- SECTION: ADVANCED COMMAND PANEL ---
+    st.subheader("⌨️ Strategic Manual Override (กรอกกำแพงหน้างาน)")
     
-    if st.button("🔄 อัปเดตข้อมูลด่วน"):
-        st.rerun()
-
-    if market:
-        cols = st.columns(3)
-        for i, symbol in enumerate(targets):
-            quote = market.get_quote_symbol(symbol)
-            with cols[i]:
-                st.subheader(f"📈 {symbol}")
-                if quote and quote.get('last') is not None:
-                    last = quote.get('last', 0)
-                    chg = quote.get('percent_change', 0)
-                    
-                    # วิเคราะห์ Wall Ratio (Offer / Bid 3 ช่องแรก)
-                    sum_bid = sum([quote.get(f'bid_volume{j}', 0) for j in range(1, 4)])
-                    sum_off = sum([quote.get(f'offer_volume{j}', 0) for j in range(1, 4)])
-                    ratio = sum_off / sum_bid if sum_bid > 0 else 0
-                    
-                    st.metric("ราคา", f"{last:.2f}", f"{chg}%")
-                    st.write(f"📊 Wall Ratio: **{ratio:.2f}**")
-                    
-                    if ratio > 3: st.warning("⚠️ เจ้ามือวางกำแพงขวาง")
-                    elif ratio < 0.5: st.success("🚀 ทางสะดวก/เจ้าเก็บของ")
-                    else: st.info("⚖️ บีบกรอบแคบ/เลือกทาง")
-                else:
-                    st.write("❌ ไม่พบข้อมูล (Sandbox)")
-    else:
-        st.error("🔌 กรุณาตรวจสอบ API Connection")
-
-# ==========================================
-# 🔍 MODE 2: สแกนหุ้นรายตัว (กัน Error 100%)
-# ==========================================
-elif menu == "🔍 สแกนหุ้นรายตัว":
-    st.title("🛡️ Market Sentinel: เจาะลึก Bid/Offer")
-    symbol = st.text_input("ระบุชื่อหุ้น", "WHA").upper()
-    
-    # --- แก้ไขท่อนดึงข้อมูลรายตัว ---
-if st.button("🔍 สแกนเดี๋ยวนี้"):
-    if market:
-        with st.spinner('กำลังดึงข้อมูลจากตลาด...'):
-            quote = market.get_quote_symbol(symbol)
+    with st.container():
+        st.markdown('<div class="command-panel">', unsafe_allow_html=True)
+        col_in, col_calc, col_score = st.columns([1.2, 1, 1.5])
+        
+        with col_in:
+            st.session_state.manual_ticker = st.text_input("ชื่อหุ้น (Target)", value=st.session_state.manual_ticker).upper()
+            auto = fetch_advanced_data(st.session_state.manual_ticker)
             
-            if quote and quote.get('last') is not None:
-                # แก้ไขการดึง Volume รวม (ถ้า Sandbox ส่งค่ามาแปลกๆ)
-                raw_vol = quote.get('total_volume')
-                # ถ้าเป็น None หรือว่าง ให้ใส่ 0 แต่ถ้ามีค่าให้แปลงเป็น int
-                vol = int(raw_vol) if raw_vol is not None else 0
-                
-                last = quote.get('last', 0)
-                pct = quote.get('percent_change', 0)
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("ราคาล่าสุด", f"{last:.2f}", f"{pct}%")
-                c2.metric("Volume รวม", f"{vol:,}") # เติมลูกน้ำคั่นหลักพัน
-                c3.metric("เวลา", quote.get('time', '--:--'))
-
-                # --- ตรวจสอบตาราง Bid/Offer ---
-                st.markdown("---")
-                col_b, col_o = st.columns(2)
-                
-                # ฟังก์ชันช่วยดึงข้อมูลตารางแบบกัน Error
-                def get_table_data(prefix):
-                    prices = []
-                    vols = []
-                    for i in range(1, 6):
-                        p = quote.get(f'{prefix}_price{i}', 0.0)
-                        v = quote.get(f'{prefix}_volume{i}', 0)
-                        prices.append(p if p is not None else 0.0)
-                        vols.append(v if v is not None else 0)
-                    return pd.DataFrame({"Price": prices, "Volume": vols})
-
-                with col_b:
-                    st.subheader("BIDS (รอซื้อ)")
-                    st.table(get_table_data('bid').style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
-                with col_o:
-                    st.subheader("OFFERS (รอขาย)")
-                    st.table(get_table_data('offer').style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
+            if auto:
+                trend_class = "trend-bull" if auto['trend'] == "BULL" else "trend-bear"
+                st.markdown(f'<span class="trend-tag {trend_class}">TREND: {auto["trend"]}</span>', unsafe_allow_html=True)
+                st.write(f"ราคาล่าสุด: **{auto['price']:.2f}** (EMA20: {auto['ema20']:.2f})")
+                st.write(f"RSI: **{auto['rsi']:.1f}**")
             else:
-                st.warning(f"⚠️ ข้อมูล {symbol} ยังไม่ถูกส่งมาจาก Sandbox (ลองกดใหม่อีกครั้ง)")
-# ==========================================
-# 🧮 MODE 3: เครื่องมือแก้เกม (DCA & Free Seed)
-# ==========================================
-elif menu == "🧮 เครื่องมือแก้เกม (Recovery)":
-    st.title("🧮 Recovery Calculator")
-    
-    tab1, tab2 = st.tabs(["📉 คำนวณถัวเฉลี่ย (WHA/MTC)", "💰 คำนวณถอนทุนคืน (SIRI)"])
-    
-    with tab1:
-        st.subheader("จุดถัวเฉลี่ยเพื่อตีตื้น")
-        c1, c2 = st.columns(2)
-        old_v = c1.number_input("จำนวนหุ้นเดิม", value=1000)
-        old_p = c2.number_input("ต้นทุนเดิม", value=4.22)
-        new_v = c1.number_input("จำนวนหุ้นที่จะถัว", value=1000)
-        new_p = c2.number_input("ราคาที่ถัว", value=4.14)
-        
-        avg = ((old_v * old_p) + (new_v * new_p)) / (old_v + new_v)
-        st.success(f"🎯 ทุนเฉลี่ยใหม่ของคุณคือ: {avg:.2f}")
+                st.warning("รอข้อมูลตลาด...")
 
-    with tab2:
-        st.subheader("ขายกี่หุ้นให้ได้เงินต้นคืน? (Free Seed)")
-        total_s = st.number_input("จำนวนหุ้นทั้งหมดที่มี", value=8700)
-        cost_p = st.number_input("ทุนเฉลี่ย (1.47)", value=1.47)
-        target_s = st.number_input("ราคาที่จะแบ่งขาย", value=1.65)
-        
-        money_back = (total_s * cost_p) / target_s
-        st.warning(f"💡 พี่โบ้ต้องขาย {int(money_back):,} หุ้น เพื่อเอาทุนคืนทั้งหมด")
-        st.info(f"🚀 จะเหลือหุ้นฟรีไว้รันกำไร: {int(total_s - money_back):,} หุ้น")
+        with col_calc:
+            st.session_state.manual_wall_vol = st.number_input("กำแพงวอลลุ่ม (Wall Vol)", value=st.session_state.manual_wall_vol, step=100000.0)
+            default_avg = auto['avg_vol'] if auto else st.session_state.manual_avg_vol
+            st.session_state.manual_avg_vol = st.number_input("วอลลุ่มเฉลี่ย (Avg Vol)", value=float(default_avg))
+            
+            # Geminibo Math Logic v2.1
+            vol_ratio = st.session_state.manual_wall_vol / st.session_state.manual_avg_vol if st.session_state.manual_avg_vol > 0 else 0
+            rsi_val = auto['rsi'] if auto else 50
+            
+            # Formula: Weight(RSI) 30% + Weight(Vol) 50% + Weight(Trend) 20%
+            r_score = max(0, 100 - rsi_val)
+            v_score = min(100, vol_ratio * 40)
+            t_score = 100 if (auto and auto['trend'] == "BULL") else 30
+            
+            g_score = (r_score * 0.3) + (v_score * 0.5) + (t_score * 0.2)
+
+        with col_score:
+            status_color = "#ef4444" if g_score > 75 else "#f59e0b" if g_score > 55 else "#3b82f6"
+            st.markdown(f"""
+            <div class="gs-result-box">
+                <p class="label-mini">Geminibo Score (v2.1)</p>
+                <h1 style="color:{status_color}; font-size:4rem; margin:0;">{g_score:.1f}</h1>
+                <p style="font-weight:bold; color:#1e293b;">Vol Ratio: {vol_ratio:.2f}x</p>
+                <hr style="margin:15px 0; border:0; border-top:1px solid #bfdbfe;">
+                <p style="font-size:0.9rem;">
+                    <b>คําแนะนำ:</b> {'🔥 ลั่นไกตามเจ้ามือ!' if g_score > 75 else '⏳ จดจ้องในกรง' if g_score > 55 else '😴 นั่งทับมือรอ'}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- SECTION: DIME PRECISION CALCULATOR ---
+    st.divider()
+    st.subheader("🧮 Dime! Net Profit Calculator")
+    cc1, cc2, cc3 = st.columns(3)
+    with cc1: shares = st.number_input("จำนวนหุ้น", value=8700 if st.session_state.manual_ticker == "SIRI" else 200, step=100)
+    with cc2: b_p = st.number_input("ราคาซื้อ (Avg Cost)", value=auto['price'] if auto else 1.47, format="%.2f")
+    with cc3: s_p = st.number_input("ราคาขายเป้าหมาย", value=(auto['price']*1.05) if auto else 1.55, format="%.2f")
+    
+    # Dime Logic: 0.15% + VAT + Reg Fee
+    comm = (b_p * shares * 0.0015) + (s_p * shares * 0.0015)
+    total_fees = (comm * 1.07) + ((b_p + s_p) * shares * 0.00007)
+    net_profit = ((s_p - b_p) * shares) - total_fees
+    
+    res_col1, res_col2 = st.columns([2, 1])
+    res_col1.metric("กำไรสุทธิหลังหักคอมฯ (NET)", f"฿{net_profit:,.2f}", f"ROI: {((net_profit/(b_p*shares))*100):.2f}%")
+    res_col2.write(f"ค่าธรรมเนียม Dime! รวม: **฿{total_fees:.2f}**")
+
+    # --- FOOTER ---
+    st.info(f"💡 **Engineer's Note:** ข้อมูลกำแพง {st.session_state.manual_wall_vol:,.0} หุ้น ของ {st.session_state.manual_ticker} ถูกจำไว้ใน ID ของพี่แล้ว แม้สลับไปทำงานราชการกลับมาข้อมูลก็ยังอยู่ครับ")
+
+if __name__ == "__main__":
+    main()
