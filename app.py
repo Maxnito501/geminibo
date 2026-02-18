@@ -1,101 +1,120 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
+import pandas as pd
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (หักค่าต๋ง + RSI แม่นยำ)
+# ⚙️ CONFIG & ENGINE
 # ==========================================
-st.set_page_config(page_title="GeminiBo v3.5: Whale Rider", page_icon="🏗️", layout="wide")
-FEE_RATE, VAT_RATE = 0.00157, 0.07
+st.set_page_config(page_title="GeminiBo v3.7: Whale Commander", layout="wide", page_icon="🏗️")
 
-def get_accurate_rsi(symbol):
+FEE_RATE = 0.00157
+VAT_RATE = 0.07
+TOTAL_FEE_FACTOR = FEE_RATE * (1 + VAT_RATE) # ประมาณ 0.168% ต่อขา
+
+def get_stock_metrics(symbol):
+    """ ดึงราคาปัจจุบัน และคำนวณ RSI """
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1mo", interval="1d")
-        if df.empty or len(df) < 15: return 0.0, 50.0
+        if df.empty or len(df) < 15:
+            return 0.0, 50.0
+        
+        price = df['Close'].iloc[-1]
         delta = df['Close'].diff()
-        gain, loss = delta.clip(lower=0), -1 * delta.clip(upper=0)
-        ma_g, ma_l = gain.rolling(window=14).mean(), loss.rolling(window=14).mean()
-        rs = ma_g / ma_l
+        gain = delta.clip(lower=0)
+        loss = -1 * delta.clip(upper=0)
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        return float(df['Close'].iloc[-1]), float(rsi.iloc[-1])
-    except: return 0.0, 50.0
+        return float(price), float(rsi.iloc[-1])
+    except:
+        return 0.0, 50.0
 
 # ==========================================
-# 📊 STRATEGIST COMMAND CENTER
+# 📊 SIDEBAR & GOAL TRACKER
 # ==========================================
-st.sidebar.title("🏗️ GeminiBo v3.5")
-menu = st.sidebar.radio("เลือกโหมด", ["🔥 กลยุทธ์สู้เจ้ามือ & บัญชี", "🎯 สรุปเป้าหมาย 500 บาท"])
+st.sidebar.title("🏗️ GeminiBo v3.7")
+st.sidebar.markdown("---")
 
-targets = ["SIRI", "WHA", "MTC", "PLANB", "SAWAD", "THCOM"]
+# บันทึกกำไรสะสม (Manual Input สำหรับวันนี้)
+st.sidebar.subheader("💰 สรุปผลงานวันนี้")
+profit_siri = st.sidebar.number_input("กำไรสุทธิ SIRI", value=219.84)
+profit_wha = st.sidebar.number_input("กำไรสุทธิ WHA", value=32.81)
+profit_others = st.sidebar.number_input("กำไรอื่นๆ", value=0.0)
 
-if menu == "🔥 กลยุทธ์สู้เจ้ามือ & บัญชี":
-    st.title("🚀 Command Center: วิเคราะห์ & บันทึกกำไร")
-    
-    total_net_profit = 0.0 # ตัวแปรเก็บกำไรสุทธิรวม
-    
-    for sym in targets:
-        with st.expander(f"📦 จัดการหุ้น {sym}", expanded=True):
-            # --- ส่วนที่ 1: วิเคราะห์ RSI & กลยุทธ์ ---
-            p, r = get_accurate_rsi(sym)
-            c1, c2, c3 = st.columns([1, 1, 2])
-            
-            with c1:
-                st.metric(f"ราคา {sym}", f"{p:.2f}")
-                st.write(f"📡 RSI: **{r:.2f}**")
-            
-            with c2:
-                b = st.number_input(f"Bid Vol", value=1000000, key=f"b_{sym}")
-                o = st.number_input(f"Offer Vol", value=3000000, key=f"o_{sym}")
-                ratio = o / b if b > 0 else 0
-                st.write(f"📊 Ratio: **{ratio:.2f}**")
-            
-            with c3:
-                st.markdown("**🛡️ กลยุทธ์สู้เจ้า:**")
-                if ratio > 4 and r > 60:
-                    st.error(f"🆘 'กำแพงลวง': เจ้าขวางบีบคายของ ตั้งขายดักหน้า!")
-                elif ratio < 0.7 and r < 40:
-                    st.success(f"💎 'ซุ่มเก็บของ': RSI ต่ำ วอลลุ่มบาง จังหวะช้อน")
-                elif ratio < 0.4 and r > 50:
-                    st.warning(f"🚀 'ลากกระชาก': ทางสะดวก Let Profit Run!")
-                else:
-                    st.info(f"⚖️ 'ดึงเช็ง': รอไม้ใหญ่ฝั่ง Buy ค่อยตาม")
+total_net = profit_siri + profit_wha + profit_others
+st.sidebar.metric("🏆 กำไรสุทธิรวม", f"{total_net:,.2f} บ.")
 
-            # --- ส่วนที่ 2: กระดานบัญชี (หักค่าต๋ง) ---
+# Progress Bar สู่ 500 บาท
+progress = min(max(total_net / 500.0, 0.0), 1.0)
+st.sidebar.write(f"🎯 เป้าหมาย 500 บาท: **{progress*100:.1f}%**")
+st.sidebar.progress(progress)
+
+# ==========================================
+# 🏹 MAIN COMMAND CENTER
+# ==========================================
+st.title("🏹 Whale Commander: อ่านใจรายใหญ่")
+
+watchlist = ["WHA", "ROJNA", "AMATA", "SIRI", "MTC", "CPALL", "SAWAD", "PLANB", "THCOM"]
+selected_stocks = st.multiselect("เลือกหุ้น 3 ตัวเพื่อเข้าตี:", watchlist, default=["WHA", "ROJNA", "MTC"])
+
+if len(selected_stocks) > 3:
+    st.warning("⚠️ กรุณาเลือกเพียง 3 ตัวเพื่อการวิเคราะห์ที่แม่นยำที่สุด")
+    selected_stocks = selected_stocks[:3]
+
+cols = st.columns(len(selected_stocks))
+
+for i, sym in enumerate(selected_stocks):
+    with cols[i]:
+        with st.container(border=True):
+            # 1. ข้อมูลทางเทคนิค
+            price, rsi = get_stock_metrics(sym)
+            st.header(f"🛡️ {sym}")
+            
+            sub_c1, sub_c2 = st.columns(2)
+            sub_c1.metric("ราคา", f"{price:.2f}")
+            
+            rsi_color = "inverse" if rsi > 70 else "normal" if rsi < 30 else "off"
+            sub_c2.metric("RSI (14)", f"{rsi:.1f}")
+
+            # 2. Volume Matrix (ดักทางเจ้ามือ)
             st.markdown("---")
-            st.markdown("**💰 บัญชีคุมหน้าตัก (หักค่าต๋ง 0.168%):**")
-            bc1, bc2, bc3 = st.columns(3)
+            st.markdown("**🐳 Volume Matrix (ล้านหุ้น)**")
             
-            v_in = bc1.number_input(f"จำนวนหุ้นต้นทุน ({sym})", value=0, key=f"vi_{sym}")
-            p_in = bc1.number_input(f"ราคาต้นทุน ({sym})", value=0.0, format="%.2f", key=f"pi_{sym}")
+            v_col1, v_col2 = st.columns(2)
+            with v_col1:
+                st.caption("ฝั่ง Bid (รับ)")
+                b1 = st.number_input("Bid 1", key=f"b1_{sym}", value=1.0)
+                b2 = st.number_input("Bid 2", key=f"b2_{sym}", value=1.0)
+                b3 = st.number_input("Bid 3", key=f"b3_{sym}", value=1.0)
+            with v_col2:
+                st.caption("ฝั่ง Offer (ขวาง)")
+                o1 = st.number_input("Offer 1", key=f"o1_{sym}", value=2.0)
+                o2 = st.number_input("Offer 2", key=f"o2_{sym}", value=2.0)
+                o3 = st.number_input("Offer 3", key=f"o3_{sym}", value=2.0)
             
-            v_out = bc2.number_input(f"จำนวนที่ขาย ({sym})", value=0, key=f"vo_{sym}")
-            p_out = bc2.number_input(f"ราคาที่ขาย ({sym})", value=0.0, format="%.2f", key=f"po_{sym}")
+            total_b = b1 + b2 + b3
+            total_o = o1 + o2 + o3
+            ratio = total_o / total_b if total_b > 0 else 0
             
-            # คำนวณกำไรสุทธิแบบหักค่าต๋งจริง
-            buy_val = v_in * p_in
-            sell_val = v_out * p_out
-            fee_buy = buy_val * FEE_RATE * (1 + VAT_RATE)
-            fee_sell = sell_val * FEE_RATE * (1 + VAT_RATE)
+            # 3. Whale Intelligence Analysis
+            st.markdown("---")
+            st.subheader("📡 ผลวิเคราะห์อาการเจ้ามือ")
             
-            # กำไรสุทธิ = (ส่วนต่างราคา) - (ค่าต๋งขาซื้อ+ขาขาย)
-            raw_p = (p_out - p_in) * v_out if v_out > 0 else 0.0
-            net_p = raw_p - (fee_buy * (v_out/v_in if v_in > 0 else 0) + fee_sell)
-            
-            total_net_profit += net_p if v_out > 0 else 0
-            
-            with bc3:
-                st.write(f"📉 ค่าต๋งรวม: **{ (fee_buy * (v_out/v_in if v_in > 0 else 0) + fee_sell):.2f}** บาท")
-                st.subheader(f"✅ สุทธิ: {net_p:,.2f}")
+            if total_b < 0.5 and total_o < 0.5:
+                st.info("⚖️ **สถานะ: 'เจ้ามือไม่อยู่'**\n\nวอลลุ่มบางเกินไป หุ้นจะแกว่งแคบๆ ไม่สนุกครับ")
+            elif ratio > 4:
+                st.error("🆘 **สถานะ: 'กำแพงลวง'**\n\nเจ้าขวาง Offer หนาเพื่อบีบให้เราคายของ ห้ามเคาะขวาเด็ดขาด!")
+                st.markdown("**กลยุทธ์:** นิ่งสงบสยบความเคลื่อนไหว ตั้งขายดักหน้ากำแพงแค่ครึ่งเดียว")
+            elif ratio < 0.4:
+                st.warning("🚀 **สถานะ: 'ทางสะดวก'**\n\nเจ้ามือถอน Offer เตรียมลากกระชาก อ่อยเหยื่อให้ตาม")
+                st.markdown("**กลยุทธ์:** Let Profit Run อย่าเพิ่งรีบขายหมู ลุ้นไปปล่อยช่วง ATC")
+            elif b1 > (b2 + b3) * 2:
+                st.success("💎 **สถานะ: 'ซุ่มเก็บของ'**\n\nมีการวาง Bid รับของไม้ใหญ่ที่ช่องแรก")
+                st.markdown("**กลยุทธ์:** เข้าตีไม้แรกตามรายใหญ่ได้เลย RSI ยังมีพื้นที่วิ่ง")
+            else:
+                st.write("📊 **สถานะ: 'สมดุล/เลือกทาง'**\n\nตลาดสู้กันปกติ รอดูไม้ใหญ่ใน Ticker นำทาง")
 
-    # แสดงผลรวมที่ Sidebar
-    st.sidebar.markdown("---")
-    st.sidebar.metric("🏆 กำไรสุทธิรวม (บาท)", f"{total_net_profit:,.2f}")
-    prog = min(max(total_net_profit / 500.0, 0.0), 1.0)
-    st.sidebar.write(f"🎯 เป้าหมาย 500 บาท: **{prog*100:.1f}%**")
-    st.sidebar.progress(prog)
-
-elif menu == "🎯 สรุปเป้าหมาย 500 บาท":
-    st.title("🎯 Weekly Profit Goal Tracker")
-    st.write("เป้าหมาย 0.8% ต่อสัปดาห์ (ค่ากับข้าว 500 บาท)")
-    # ส่วนสรุปกราฟกำไรสะสม (ถ้าพี่ต้องการเพิ่มภายหลัง)
+st.markdown("---")
+st.caption("ตำราพิชัยสงครามกล่าวว่า: 'การชนะร้อยครั้งมิใช่ความสามารถอันสูงสุด การชนะโดยไม่ต้องรบเลยต่างหากคือความสามารถอันสูงสุด' — ใช้เครื่องมืออ่านใจเจ้ามือ เพื่อชัยชนะที่ยั่งยืน")
