@@ -78,39 +78,49 @@ elif menu == "🔍 สแกนหุ้นรายตัว":
     st.title("🛡️ Market Sentinel: เจาะลึก Bid/Offer")
     symbol = st.text_input("ระบุชื่อหุ้น", "WHA").upper()
     
-    if st.button("🔍 สแกนเดี๋ยวนี้"):
-        if market:
+    # --- แก้ไขท่อนดึงข้อมูลรายตัว ---
+if st.button("🔍 สแกนเดี๋ยวนี้"):
+    if market:
+        with st.spinner('กำลังดึงข้อมูลจากตลาด...'):
             quote = market.get_quote_symbol(symbol)
+            
             if quote and quote.get('last') is not None:
-                # แก้ Error 'total_volume' ด้วย .get()
-                last = quote.get('last', 0) or 0
-                pct = quote.get('percent_change', 0) or 0
-                vol = quote.get('total_volume', 0) or 0
+                # แก้ไขการดึง Volume รวม (ถ้า Sandbox ส่งค่ามาแปลกๆ)
+                raw_vol = quote.get('total_volume')
+                # ถ้าเป็น None หรือว่าง ให้ใส่ 0 แต่ถ้ามีค่าให้แปลงเป็น int
+                vol = int(raw_vol) if raw_vol is not None else 0
+                
+                last = quote.get('last', 0)
+                pct = quote.get('percent_change', 0)
                 
                 c1, c2, c3 = st.columns(3)
                 c1.metric("ราคาล่าสุด", f"{last:.2f}", f"{pct}%")
-                c2.metric("Volume รวม", f"{vol:,}")
+                c2.metric("Volume รวม", f"{vol:,}") # เติมลูกน้ำคั่นหลักพัน
                 c3.metric("เวลา", quote.get('time', '--:--'))
 
+                # --- ตรวจสอบตาราง Bid/Offer ---
                 st.markdown("---")
                 col_b, col_o = st.columns(2)
+                
+                # ฟังก์ชันช่วยดึงข้อมูลตารางแบบกัน Error
+                def get_table_data(prefix):
+                    prices = []
+                    vols = []
+                    for i in range(1, 6):
+                        p = quote.get(f'{prefix}_price{i}', 0.0)
+                        v = quote.get(f'{prefix}_volume{i}', 0)
+                        prices.append(p if p is not None else 0.0)
+                        vols.append(v if v is not None else 0)
+                    return pd.DataFrame({"Price": prices, "Volume": vols})
+
                 with col_b:
                     st.subheader("BIDS (รอซื้อ)")
-                    bid_df = pd.DataFrame({
-                        "Price": [quote.get(f'bid_price{i}', 0) for i in range(1, 6)],
-                        "Volume": [quote.get(f'bid_volume{i}', 0) for i in range(1, 6)]
-                    })
-                    st.table(bid_df.style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
+                    st.table(get_table_data('bid').style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
                 with col_o:
                     st.subheader("OFFERS (รอขาย)")
-                    off_df = pd.DataFrame({
-                        "Price": [quote.get(f'offer_price{i}', 0) for i in range(1, 6)],
-                        "Volume": [quote.get(f'offer_volume{i}', 0) for i in range(1, 6)]
-                    })
-                    st.table(off_df.style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
+                    st.table(get_table_data('offer').style.format({"Price": "{:.2f}", "Volume": "{:,}"}))
             else:
-                st.error("⚠️ ไม่พบข้อมูลหุ้นตัวนี้")
-
+                st.warning(f"⚠️ ข้อมูล {symbol} ยังไม่ถูกส่งมาจาก Sandbox (ลองกดใหม่อีกครั้ง)")
 # ==========================================
 # 🧮 MODE 3: เครื่องมือแก้เกม (DCA & Free Seed)
 # ==========================================
