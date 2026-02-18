@@ -1,78 +1,71 @@
 import streamlit as st
 import pandas as pd
-from settrade_v2.user import Investor
 
 # ==========================================
-# ⚙️ CONFIGURATION & UI SETUP
+# ⚙️ UI SETUP
 # ==========================================
-st.set_page_config(page_title="GeminiBo Engineer v2.2", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="GeminiBo Manual v2.3", page_icon="🏗️", layout="wide")
 
-APP_ID = "A6ci0gEXKmkRPwRY"
-APP_SECRET = "AMZcHrk9Ytvyj+UPO7BDgvpZ5Cjy8h0H8ocZoNQ6aQPK"
-
-@st.cache_resource
-def connect_market():
-    try:
-        investor = Investor(app_id=APP_ID, app_secret=APP_SECRET,
-                           broker_id="SANDBOX", app_code="SANDBOX", is_auto_queue=False)
-        return investor.MarketData()
-    except Exception as e: return None
-
-market = connect_market()
-
-st.sidebar.title("🏗️ GeminiBo v2.2")
-menu = st.sidebar.radio("เลือกโหมดใช้งาน", ["📊 Dashboard 3 หุ้นเทพ", "🔍 สแกนหุ้นรายตัว", "🧮 เครื่องมือแก้เกม (Recovery)"])
+st.sidebar.title("🏗️ GeminiBo v2.3")
+st.sidebar.info("Engineering Mindset: Manual Control")
+menu = st.sidebar.radio("เลือกเครื่องมือ", ["📊 วิเคราะห์เจ้ามือ (Wall Ratio)", "🧮 เครื่องมือแก้เกม (Recovery)"])
 
 # ==========================================
-# 📊 MODE 1: DASHBOARD (เพิ่มช่องกรอกวอลลุ่มเอง)
+# 📊 MODE 1: วิเคราะห์เจ้ามือ (กรอกเอง 100%)
 # ==========================================
-if menu == "📊 Dashboard 3 หุ้นเทพ":
-    st.title("🚀 Real-time Dashboard (Manual Input Option)")
-    targets = ["SIRI", "WHA", "MTC"]
+if menu == "📊 วิเคราะห์เจ้ามือ (Wall Ratio)":
+    st.title("🚀 Manual Wall Ratio Tracker")
+    st.write("ดูตัวเลขจาก Streaming แล้วกรอกเพื่ออ่านใจเจ้ามือ")
     
     cols = st.columns(3)
+    targets = ["SIRI", "WHA", "MTC"]
+    
+    # ค่าเริ่มต้นอ้างอิงจากรูปที่พี่โบ้ส่งมาล่าสุด
+    default_vals = {
+        "SIRI": {"bid": 4400000, "off": 2500000}, # จากรูป image_76df44.png
+        "WHA": {"bid": 7292200, "off": 1673800},  # จากรูป image_6a9581.png
+        "MTC": {"bid": 738600, "off": 362900}     # จากรูป image_6a865e.jpg
+    }
+
     for i, symbol in enumerate(targets):
         with cols[i]:
             st.subheader(f"📈 {symbol}")
+            m_price = st.number_input(f"ราคาปัจจุบัน ({symbol})", value=0.0, step=0.01, format="%.2f", key=f"p_{symbol}")
+            m_bid = st.number_input(f"Bid Vol (รวม 3 ช่องแรก)", value=default_vals[symbol]["bid"], step=100000, key=f"b_{symbol}")
+            m_off = st.number_input(f"Offer Vol (รวม 3 ช่องแรก)", value=default_vals[symbol]["off"], step=100000, key=f"o_{symbol}")
             
-            # ดึงข้อมูลจากตลาด (ถ้ามี)
-            last_price = 0.0
-            if market:
-                quote = market.get_quote_symbol(symbol)
-                if quote and quote.get('last'):
-                    last_price = quote.get('last', 0)
-                    st.metric("ราคาตลาด", f"{last_price:.2f}", f"{quote.get('percent_change', 0)}%")
-
-            # --- ส่วนกรอกวอลลุ่มเอง (ทางเลือกสำหรับพี่โบ้) ---
-            with st.expander(f"🛠️ กรอกวอลลุ่ม {symbol} เอง"):
-                manual_bid = st.number_input(f"Bid Vol ({symbol})", value=1000000, step=100000, key=f"b_{symbol}")
-                manual_off = st.number_input(f"Offer Vol ({symbol})", value=3000000, step=100000, key=f"o_{symbol}")
-                
-                # คำนวณ Ratio จากที่กรอกเอง
-                m_ratio = manual_off / manual_bid if manual_bid > 0 else 0
-                st.write(f"📊 Manual Wall Ratio: **{m_ratio:.2f}**")
-                
-                if m_ratio > 3: st.warning("⚠️ เจ้ามือวางกำแพงขวาง (จากค่าที่กรอก)")
-                elif m_ratio < 0.5: st.success("🚀 ทางสะดวก/เจ้าเก็บของ (จากค่าที่กรอก)")
-                else: st.info("⚖️ บีบกรอบแคบ/เลือกทาง")
+            ratio = m_off / m_bid if m_bid > 0 else 0
+            st.metric(f"Wall Ratio ({symbol})", f"{ratio:.2f}")
+            
+            if ratio > 3: st.warning("⚠️ เจ้ามือวางกำแพงขวาง (รายย่อยอึดอัด)")
+            elif ratio < 0.5: st.success("🚀 ทางสะดวก (เจ้ามือเก็บของ/ลาก)")
+            else: st.info("⚖️ บีบกรอบแคบ (รอเลือกทาง)")
 
 # ==========================================
-# (เนื้อหา MODE 2 และ 3 คงเดิมตามที่พี่โบ้ต้องการ)
+# 🧮 MODE 2: เครื่องมือแก้เกม (คำนวณแม่นยำ)
 # ==========================================
-elif menu == "🔍 สแกนหุ้นรายตัว":
-    st.title("🛡️ Market Sentinel: เจาะลึก Bid/Offer")
-    symbol = st.text_input("ระบุชื่อหุ้น", "WHA").upper()
-    if st.button("🔍 สแกนเดี๋ยวนี้"):
-        if market:
-            quote = market.get_quote_symbol(symbol)
-            if quote and quote.get('last') is not None:
-                last = quote.get('last', 0) or 0
-                vol = quote.get('total_volume', 0) or 0
-                st.metric("ราคาล่าสุด", f"{last:.2f}")
-                st.metric("Volume รวม", f"{vol:,}")
-                # ... (ตาราง Bid/Offer เหมือนเดิม)
-
 elif menu == "🧮 เครื่องมือแก้เกม (Recovery)":
     st.title("🧮 Recovery Calculator")
+    
     tab1, tab2 = st.tabs(["📉 คำนวณถัวเฉลี่ย (WHA/MTC)", "💰 คำนวณถอนทุนคืน (SIRI)"])
-    # ... (ส่วนคำนวณเหมือนเดิม)
+    
+    with tab1:
+        st.subheader("จุดถัวเฉลี่ยเพื่อตีตื้น")
+        c1, c2 = st.columns(2)
+        old_v = c1.number_input("จำนวนหุ้นเดิม", value=1000)
+        old_p = c2.number_input("ต้นทุนเดิม", value=4.22)
+        new_v = c1.number_input("จำนวนหุ้นที่จะซื้อเพิ่ม", value=1000)
+        new_p = c2.number_input("ราคาที่จะเข้าถัว", value=4.14)
+        
+        avg = ((old_v * old_p) + (new_v * new_p)) / (old_v + new_v)
+        st.success(f"🎯 ทุนเฉลี่ยใหม่ของคุณคือ: {avg:.2f}")
+
+    with tab2:
+        st.subheader("ขายกี่หุ้นให้ได้เงินต้นคืน? (Free Seed)")
+        total_s = st.number_input("จำนวนหุ้นรวมที่มี", value=8700)
+        cost_p = st.number_input("ทุนเฉลี่ย (1.47)", value=1.47)
+        target_s = st.number_input("ราคาที่จะแบ่งขาย", value=1.65)
+        
+        money_back = (total_s * cost_p) / target_s
+        st.warning(f"💡 ขาย {int(money_back):,} หุ้น เพื่อถอนทุนคืน")
+        st.info(f"🚀 หุ้นกำไร (ฟรี) ที่เหลือ: {int(total_s - money_back):,} หุ้น")
