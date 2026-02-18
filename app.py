@@ -3,91 +3,94 @@ import pandas as pd
 import yfinance as yf
 
 # ==========================================
-# ⚙️ CONFIG & STABLE RSI ENGINE
+# ⚙️ CONFIG & BUG FIX: RSI ENGINE
 # ==========================================
-st.set_page_config(page_title="GeminiBo Strategist v3.0", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="GeminiBo Strategist v3.1", page_icon="🏗️", layout="wide")
 
-def get_market_data(symbol):
+def get_accurate_rsi(symbol):
     try:
-        df = yf.download(f"{symbol}.BK", period="1mo", interval="1d", progress=False)
-        if df.empty or len(df) < 15: return 0.0, 50.0
-        last_p = float(df['Close'].iloc[-1])
+        # ดึงข้อมูลย้อนหลัง 2 เดือนเพื่อให้คำนวณ RSI 14 วันได้แม่นยำ
+        ticker = yf.Ticker(f"{symbol}.BK")
+        df = ticker.history(period="2mo", interval="1d")
+        
+        if df.empty or len(df) < 20: return 0.0, 50.0
+        
+        # คำนวณ RSI แบบ Wilder's Smoothing (มาตรฐานกราฟเทคนิค)
         delta = df['Close'].diff()
-        up, down = delta.clip(lower=0), -1 * delta.clip(upper=0)
-        ma_up, ma_down = up.rolling(window=14).mean(), down.rolling(window=14).mean()
-        rs = ma_up / ma_down
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        
+        avg_gain = gain.rolling(window=14).mean()
+        avg_loss = loss.rolling(window=14).mean()
+        
+        # ป้องกันการหารด้วยศูนย์
+        rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
-        return last_p, float(rsi.iloc[-1])
-    except: return 0.0, 50.0
+        
+        return float(df['Close'].iloc[-1]), float(rsi.iloc[-1])
+    except:
+        return 0.0, 50.0
 
 # ==========================================
-# 📊 MAIN DASHBOARD
+# 📊 STRATEGIST DASHBOARD
 # ==========================================
-st.sidebar.title("🏗️ GeminiBo v3.0")
-menu = st.sidebar.radio("เลือกโหมดใช้งาน", ["📊 วิเคราะห์เจ้ามือ & หน้าตัก", "🧮 Recovery Tools"])
+st.sidebar.title("🏗️ GeminiBo v3.1")
+menu = st.sidebar.radio("เลือกโหมด", ["📊 วิเคราะห์สถานการณ์", "💰 กระดานบัญชี"])
 
-if menu == "📊 วิเคราะห์เจ้ามือ & หน้าตัก":
-    st.title("🚀 Strategist Dashboard: Full Control")
-    targets = ["SIRI", "WHA", "MTC", "PLANB", "SAWAD", "THCOM"]
-    
-    # --- ส่วนที่ 1: วิเคราะห์สถานการณ์ (Strategy Advisor) ---
-    st.header("🔍 1. อ่านใจเจ้ามือ (RSI + Volume Matrix)")
+targets = ["SIRI", "WHA", "MTC", "PLANB", "SAWAD", "THCOM"]
+
+if menu == "📊 วิเคราะห์สถานการณ์":
+    st.title("🚀 Situation Room: Accurate Technicals")
     cols = st.columns(3)
+    
     for i, symbol in enumerate(targets):
         with cols[i % 3]:
             with st.expander(f"📈 วิเคราะห์ {symbol}", expanded=True):
-                price, rsi_val = get_market_data(symbol)
+                price, rsi_val = get_accurate_rsi(symbol)
+                
+                # แสดงค่าที่แยกจากกันชัดเจน
                 st.metric(f"ราคา {symbol}", f"{price:.2f}")
-                st.write(f"📡 **RSI (14): {rsi_val:.2f}**")
+                st.write(f"📡 RSI (14): **{rsi_val:.2f}**")
                 
                 m_bid = st.number_input(f"Bid Vol ({symbol})", value=1000000, key=f"b_{symbol}")
                 m_off = st.number_input(f"Offer Vol ({symbol})", value=3000000, key=f"o_{symbol}")
                 ratio = m_off / m_bid if m_bid > 0 else 0
                 
-                # --- 🤖 🤖 ระบบวิเคราะห์สถานการณ์ (กลับมาแล้ว!) ---
-                st.markdown("**💡 คำแนะนำจาก AI:**")
-                if rsi_val > 65 and ratio > 3:
-                    st.error("🆘 สถานการณ์: 'เจ้าขวาง/ล่อแมงเม่า' \n\n **ทำอย่างไร:** ห้ามถัว! ตั้งขายดักหน้ากำแพง (เช่น 4.26)")
-                elif rsi_val < 40 and ratio < 0.8:
-                    st.success("💎 สถานการณ์: 'เจ้าเก็บของ/ช้อน' \n\n **ทำอย่างไร:** จังหวะเบิ้ลไม้ถัวล่างสุดตามกราฟ")
-                elif ratio < 0.5 and rsi_val > 50:
-                    st.warning("🚀 สถานการณ์: 'ทางสะดวก/ลากจริง' \n\n **ทำอย่างไร:** Let Profit Run ดักไม้สุดท้าย 1.60")
+                # --- 🤖 ระบบแนะนำ (AI Strategy Advisor) ---
+                st.markdown("---")
+                if rsi_val > 70:
+                    st.error(f"🚨 {symbol}: 'ตึงมาก' (Overbought)\nห้ามเคาะขวา! รอจังหวะขาย")
+                elif rsi_val < 35:
+                    st.success(f"💎 {symbol}: 'ถูกมาก' (Oversold)\nจังหวะช้อน/ถัวไม้ล่าง")
+                elif ratio < 0.6:
+                    st.warning(f"🚀 {symbol}: 'ทางสะดวก'\nเจ้ามือเตรียมลาก ตามกระแส!")
                 else:
-                    st.info("⚖️ สถานการณ์: 'ดึงเช็ง/เลือกทาง' \n\n **ทำอย่างไร:** นั่งทับมือ รอตามกระแสราคาปิด")
+                    st.info(f"⚖️ {symbol}: 'ดึงเช็ง'\nรอเลือกทาง นั่งทับมือก่อน")
 
-    st.markdown("---")
-
-    # --- ส่วนที่ 2: กระดานคิดราคา & สรุปกำไร (กลับมาแล้ว!) ---
-    st.header("💰 2. บัญชีคุมหน้าตัก (Portfolio Dashboard)")
-    grand_total_profit = 0.0
-    
+# ==========================================
+# 💰 กระดานบัญชี (สรุปกำไร/ขาดทุน)
+# ==========================================
+elif menu == "💰 กระดานบัญชี":
+    st.title("💰 Portfolio Summary")
+    grand_profit = 0.0
     for symbol in targets:
-        with st.expander(f"📝 บันทึกบัญชี {symbol}"):
+        with st.expander(f"📝 บันทึก {symbol}", expanded=True):
             c1, c2, c3 = st.columns(3)
+            # กรอกหุ้นเดิม
+            v_old = c1.number_input(f"หุ้นเดิม ({symbol})", value=0, key=f"vo_{symbol}")
+            p_old = c1.number_input(f"ราคาทุน ({symbol})", value=0.0, format="%.2f", key=f"po_{symbol}")
+            # กรอกหุ้นถัว/ซื้อเพิ่ม
+            v_new = c2.number_input(f"หุ้นเพิ่ม ({symbol})", value=0, key=f"vn_{symbol}")
+            p_new = c2.number_input(f"ราคาถัว ({symbol})", value=0.0, format="%.2f", key=f"pn_{symbol}")
+            # กรอกการขาย
+            v_out = c3.number_input(f"จำนวนขาย ({symbol})", value=0, key=f"vs_{symbol}")
+            p_out = c3.number_input(f"ราคาขาย ({symbol})", value=0.0, format="%.2f", key=f"ps_{symbol}")
             
-            # ข้อมูลต้นทุน (ทุนเดิม + ซื้อเพิ่ม)
-            vol_old = c1.number_input(f"จำนวนหุ้นเดิม ({symbol})", value=0, key=f"vo_{symbol}")
-            price_old = c1.number_input(f"ราคาที่ได้มา ({symbol})", value=0.0, format="%.2f", key=f"po_{symbol}")
+            # คำนวณ
+            total_v = v_old + v_new
+            avg_p = ((v_old * p_old) + (v_new * p_new)) / total_v if total_v > 0 else 0.0
+            profit = (p_out - avg_p) * v_out if v_out > 0 else 0.0
+            grand_profit += profit
+            st.write(f"📊 ทุนเฉลี่ยใหม่: **{avg_p:.2f}** | กำไรตัวนี้: **{profit:,.2f}**")
             
-            vol_new = c2.number_input(f"จำนวนซื้อเพิ่ม/ถัว ({symbol})", value=0, key=f"vn_{symbol}")
-            price_new = c2.number_input(f"ราคาที่ซื้อเพิ่ม ({symbol})", value=0.0, format="%.2f", key=f"pn_{symbol}")
-            
-            # ข้อมูลการขาย
-            vol_sell = c3.number_input(f"จำนวนที่ขาย ({symbol})", value=0, key=f"vs_{symbol}")
-            price_sell = c3.number_input(f"ราคาที่ขาย ({symbol})", value=0.0, format="%.2f", key=f"ps_{symbol}")
-            
-            # คำนวณต้นทุนเฉลี่ย
-            total_vol = vol_old + vol_new
-            avg_cost = ((vol_old * price_old) + (vol_new * price_new)) / total_vol if total_vol > 0 else 0.0
-            
-            # คำนวณกำไร/ขาดทุน
-            p_l = (price_sell - avg_cost) * vol_sell if vol_sell > 0 else 0.0
-            grand_total_profit += p_l
-            
-            st.write(f"📊 ทุนเฉลี่ย: **{avg_cost:.2f}** | จำนวนหุ้นรวม: **{total_vol:,}**")
-            st.subheader(f"💵 กำไร/ขาดทุน {symbol}: {p_l:,.2f} บาท")
-
-    st.sidebar.markdown("---")
-    st.sidebar.header("🏆 สรุปผลงานวันนี้")
-    st.sidebar.metric("กำไร/ขาดทุนรวม (บาท)", f"{grand_total_profit:,.2f}")
-    if grand_total_profit > 0: st.sidebar.balloons()
+    st.sidebar.metric("🏆 กำไร/ขาดทุนรวม", f"{grand_profit:,.2f}")
