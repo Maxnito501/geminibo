@@ -4,9 +4,9 @@ import pandas as pd
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (v5.4 Correction Ledger)
+# ⚙️ CONFIG & ENGINE (v5.5 Hotfix Edition)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v5.4: Precision Ledger", layout="wide", page_icon="📓")
+st.set_page_config(page_title="GeminiBo v5.5: Precision Ledger", layout="wide", page_icon="📓")
 
 # ค่าธรรมเนียมมาตรฐาน (รวม VAT 7% แล้ว)
 FEE_STREAMING = 0.00168  # 0.157% + VAT = ~0.168%
@@ -55,12 +55,12 @@ tab1, tab2 = st.tabs(["🏹 ศูนย์บัญชาการ (Commander)"
 
 # --- TAB 1: COMMANDER ---
 with tab1:
-    st.title("🏹 GeminiBo v5.4: Commander")
+    st.title("🏹 GeminiBo v5.5: Commander")
     
     # ส่วนเพิ่มหุ้นด้วยตนเอง
     c_add1, c_add2 = st.columns([3, 1])
     with c_add1:
-        new_sym = st.text_input("➕ เพิ่มหุ้นเข้าลิสต์สแกน (เช่น GPSC, JMT, BTS):").upper()
+        new_sym = st.text_input("➕ เพิ่มหุ้นเข้าลิสต์สแกน (เช่น JMT, BTS):").upper()
     with c_add2:
         if st.button("บันทึกเข้าลิสต์") and new_sym:
             if new_sym not in st.session_state.custom_watchlist:
@@ -69,7 +69,7 @@ with tab1:
 
     # สรุป ROI รายเดือนที่ Sidebar
     st.sidebar.title("💰 สถานะหาเงินจ่ายแอป")
-    total_p_accum = sum(item['กำไรสุทธิ'] for item in st.session_state.trade_history)
+    total_p_accum = sum(item.get('กำไรสุทธิ', 0.0) for item in st.session_state.trade_history)
     st.sidebar.metric("🏆 กำไรสะสมสุทธิ", f"{total_p_accum:,.2f} บ.")
     
     prog_val = min(max(total_p_accum / TARGET_TOTAL, 0.0), 1.0)
@@ -93,12 +93,14 @@ with tab1:
                     st.metric("ราคาล่าสุด", f"{data['price']:.2f}", f"{data['change']:.2f}%")
                     
                     if sym == "SIRI":
-                        if data['price'] >= 1.66: st.error("🔥 **ห้ามขายหมู!** ทะลุต้านใหญ่แล้ว")
+                        if data['rsi'] > 85: st.warning(f"⚠️ RSI สูงมาก ({data['rsi']:.1f}) ระวังระเบิดลง")
+                        if data['price'] >= 1.66: st.error("💎 **ห้ามขายหมู!** ทะลุต้านใหญ่แล้ว")
                         elif 1.62 <= data['price'] <= 1.63: st.warning("🎯 **เป้าไม้แรก:** แบ่งขายเก็บกำไร")
                     elif sym == "MTC":
                         st.info("🕒 **MTC:** ตั้งขาย 100 หุ้นที่ 39.75 (หนีมีเชิง)")
+                        if data['price'] < 39.00: st.error("🚨 หลุดแนวรับ 39.00 พิจารณาถอนทัพ")
                     elif sym == "GPSC":
-                        if data['rsi'] < 65 and data['rvol'] > 1.2: st.success("💎 **ทรงสวย!** ระวังขายหมูซ้ำรอย")
+                        if data['rsi'] < 65 and data['rvol'] > 1.2: st.success("💎 **ทรงสวย!** วาฬเข้า ระวังขายหมู")
                     
                     st.write(f"📡 RSI: {data['rsi']:.1f} | 🌊 RVOL: {data['rvol']:.2f}")
                 else: st.error(f"ไม่พบข้อมูล {sym}")
@@ -112,7 +114,7 @@ with tab2:
         
         with l1:
             st.caption("🟢 ภาคการซื้อ (Entry)")
-            in_symbol = st.text_input("ชื่อหุ้น (พิมพ์เองได้เลย)", value="SIRI").upper()
+            in_symbol = st.text_input("ชื่อหุ้น (พิมพ์ชื่อหุ้นใหม่ได้ที่นี่)", value="SIRI").upper()
             broker_type = st.radio("เทรดผ่านแอป:", ["Streaming", "Dime (Standard)", "Dime (Free Tier)"], horizontal=True)
             in_price = st.number_input("ราคาซื้อ (ต้นทุน)", value=1.000, step=0.001, format="%.3f")
             in_qty_total = st.number_input("จำนวนหุ้นที่ซื้อมา (ล็อตนี้)", value=1000, step=100)
@@ -169,19 +171,20 @@ with tab2:
         h_col5.write("**หมายเหตุ**")
         h_col6.write("**ลบ**")
         
-        # รายละเอียดแต่ละบรรทัด
+        # รายละเอียดแต่ละบรรทัด (ใช้ .get() เพื่อป้องกัน KeyError จากข้อมูลเก่า)
         for idx, item in enumerate(st.session_state.trade_history):
             r_col1, r_col2, r_col3, r_col4, r_col5, r_col6 = st.columns([1, 1, 1.5, 1, 2, 0.5])
-            r_col1.write(item['วันที่'])
-            r_col2.write(f"**{item['หุ้น']}**")
-            r_col3.write(f"{item['จำนวน']:,} @ {item['ราคาขาย']:.3f}")
-            r_col4.write(f"{item['กำไรสุทธิ']:,.2f}")
-            r_col5.write(f"<small>{item['หมายเหตุ']}</small>", unsafe_allow_html=True)
+            r_col1.write(item.get('วันที่', '-'))
+            r_col2.write(f"**{item.get('หุ้น', 'Unknown')}**")
+            r_col3.write(f"{item.get('จำนวน', 0):,} @ {item.get('ราคาขาย', 0.0):.3f}")
+            r_col4.write(f"{item.get('กำไรสุทธิ', 0.0):,.2f}")
+            # แก้ไข KeyError โดยใช้ .get('หมายเหตุ')
+            note_val = item.get('หมายเหตุ', '-')
+            r_col5.write(f"<small>{note_val}</small>", unsafe_allow_html=True)
             
-            # ปุ่มลบรายช่อง
             if r_col6.button("🗑️", key=f"del_{idx}"):
                 st.session_state.trade_history.pop(idx)
-                st.toast(f"ลบรายการ {item['หุ้น']} เรียบร้อย!")
+                st.toast(f"ลบรายการเรียบร้อย!")
                 st.rerun()
 
         st.markdown("---")
@@ -194,4 +197,4 @@ with tab2:
         st.info("ยังไม่มีข้อมูลการขาย... บันทึกไม้แรกเพื่อเริ่มภารกิจหาเงินจ่ายค่าแอปครับพี่โบ้!")
 
 st.markdown("---")
-st.caption("v5.4 Precision & Correction Ledger — เพราะทุกความผิดพลาด แก้ไขได้เสมอ")
+st.caption("v5.5 Professional Ledger (Hotfix) — แก้ไขอาการแอปค้างและเพิ่มระบบกันขายหมู GPSC")
