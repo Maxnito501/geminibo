@@ -4,134 +4,103 @@ import pandas as pd
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (v4.6 Portfolio Sniper)
+# ⚙️ CONFIG & ENGINE (v4.7 Opportunity Sniper)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v4.6: Portfolio Sniper", layout="wide", page_icon="🏹")
+st.set_page_config(page_title="GeminiBo v4.7: Opportunity Sniper", layout="wide", page_icon="🏹")
+
+# ค่าธรรมเนียมเฉลี่ย (รวม VAT)
+TOTAL_FEE_FACTOR = 0.00168 
 
 def get_advanced_metrics(symbol):
-    """ ดึงข้อมูลราคา, RSI, RVOL และแนวรับแนวต้าน """
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1mo", interval="1d")
-        if df.empty or len(df) < 10:
-            return None
+        if df.empty or len(df) < 10: return None
         
         price = df['Close'].iloc[-1]
         prev_price = df['Close'].iloc[-2]
         change_pct = ((price - prev_price) / prev_price) * 100
-        high_5d = df['High'].iloc[-5:].max()
-        low_5d = df['Low'].iloc[-5:].min()
-
-        # RSI Calculation
+        
+        # RSI & RVOL
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
+        rsi = 100 - (100 / (1 + (gain / loss)))
         
-        # RVOL (Relative Volume)
         avg_vol_5d = df['Volume'].iloc[-6:-1].mean()
         curr_vol = df['Volume'].iloc[-1]
         rvol = curr_vol / avg_vol_5d if avg_vol_5d > 0 else 1.0
         
-        return {
-            "price": price,
-            "change": change_pct,
-            "rsi": rsi.iloc[-1],
-            "rvol": rvol,
-            "resistance": high_5d,
-            "support": low_5d
-        }
-    except:
-        return None
+        return {"price": price, "change": change_pct, "rsi": rsi.iloc[-1], "rvol": rvol}
+    except: return None
 
 # ==========================================
-# 📊 SIDEBAR: PORTFOLIO TACTICS
+# 📊 SIDEBAR: MTC TACTICAL (100/100 Plan)
 # ==========================================
-st.sidebar.title("⚔️ ยุทธวิธีจอมทัพ")
-st.sidebar.info("เป้าหมายพรุ่งนี้: ปรับทัพเพื่ออาทิตย์หน้า")
+st.sidebar.title("⚔️ ยุทธวิธี MTC 100/100")
+st.sidebar.info("แผน: ขาย 100 ที่ 39.75 | รัน 100 สู่ 42.00")
 
-with st.sidebar.expander("🍎 แผน SIRI (2,000 + 2,700 หุ้น)", expanded=True):
-    st.write("ต้านย่อย: 1.62 - 1.63 (ขาย 2,000)")
-    st.write("ต้านใหญ่: 1.66+ (Run 2,700)")
-    siri_price = st.number_input("ราคา SIRI ปัจจุบัน", value=1.61, step=0.01)
-    if siri_price >= 1.66:
-        st.error("🔥 ห้ามขายหมู! ทะลุต้านใหญ่แล้ว")
-    elif siri_price >= 1.62:
-        st.warning("🎯 ถึงจุดขายบางส่วน (2,000 หุ้น)")
+with st.sidebar.expander("🐌 สถานะ MTC รายงานตัว", expanded=True):
+    current_mtc = st.number_input("ราคา MTC ปัจจุบัน", value=39.50, step=0.25)
+    if current_mtc >= 39.75:
+        st.success("🎯 **ถึงเป้าแรก!** ขาย 100 หุ้นทันที")
+    elif current_mtc >= 40.00:
+        st.error("🔥 **BREAKOUT!** 100 หุ้นที่เหลือรันยาว")
 
-with st.sidebar.expander("🐌 แผน MTC (สายเฉื่อย)", expanded=True):
-    st.write("สถานะ: เทรนดีแต่ไม่ซิ่ง")
-    if st.button("ประเมินจุดถอนสมอ MTC"):
-        st.write("กลยุทธ์: หาก RSI < 50 และ RVOL < 0.8 ให้สลับตัวรบ")
+st.sidebar.warning("⚠️ **คำเตือนวันศุกร์:** ระวังหุ้นร้อน (Hot Stocks) เทขายทำกำไรช่วงบ่าย")
 
 # ==========================================
-# 🏹 SCANNER: SEARCHING FOR NEXT WEEK WHALES
+# 🏹 MAIN DASHBOARD
 # ==========================================
-st.title("🏹 GeminiBo v4.6: Market Sniper")
+st.title("🏹 Opportunity Sniper v4.7")
 
-watchlist = ["WHA", "ROJNA", "AMATA", "SIRI", "MTC", "CPALL", "SAWAD", "PLANB", "THCOM", "JMT", "BTS"]
-
-st.subheader("🔍 ระบบสแกนหุ้นซิ่ง (Auto-Scan)")
+# ส่วนสแกนหาตัวซิ่งแทนที่ MTC (กรองหุ้นร้อนออก)
+st.subheader("🔍 สแกนหา 'หุ้นซิ่งเทรนสวย' (เลี่ยงหุ้นร้อนเกินไป)")
+watchlist = ["WHA", "ROJNA", "AMATA", "SIRI", "MTC", "CPALL", "SAWAD", "PLANB", "THCOM"]
 scan_results = []
 for sym in watchlist:
-    m = get_advanced_metrics(sym)
-    if m:
-        # เงื่อนไขหุ้นซิ่ง: RVOL เริ่มมา (1.0-1.5) แต่ RSI ยังไม่สูง (40-60) และราคายังไม่พุ่งแรงมาก
+    data = get_advanced_metrics(sym)
+    if data:
         status = "รอดูเชิง"
-        if m['rvol'] > 1.2 and m['rsi'] < 60:
-            status = "🚀 พร้อมซิ่ง (ดักรอ)"
-        elif m['rsi'] > 70:
-            status = "⚠️ ระวังดอย"
-        elif m['rvol'] > 2.0:
-            status = "🐳 วาฬบุก!"
+        # เพิ่มเงื่อนไข: หุ้นที่ RSI < 70 เพื่อเลี่ยงตัวที่ร้อนเกินไป (Overbought)
+        if data['rvol'] > 1.3 and 45 < data['rsi'] < 65: status = "🚀 พร้อมซิ่ง (เทรนดี)"
+        elif data['rsi'] >= 70: status = "🔥 หุ้นร้อน (ระวังโดนเท)"
+        elif data['rvol'] < 0.8: status = "🐢 เฉื่อย/พักฐาน"
         
         scan_results.append({
-            "หุ้น": sym,
-            "ราคา": f"{m['price']:.2f}",
-            "RVOL": round(m['rvol'], 2),
-            "RSI": round(m['rsi'], 1),
-            "สถานะ": status
+            "หุ้น": sym, "ราคา": f"{data['price']:.2f}",
+            "RVOL": round(data['rvol'], 2), "RSI": round(data['rsi'], 1), "สถานะ": status
         })
 
 df_scan = pd.DataFrame(scan_results)
-# กรองเฉพาะตัวที่น่าสนใจ
-ready_to_zip = df_scan[df_scan['สถานะ'].str.contains("พร้อมซิ่ง|วาฬบุก")]
-if not ready_to_zip.empty:
-    st.dataframe(ready_to_zip, use_container_width=True, hide_index=True)
-else:
-    st.write("ยังไม่พบหุ้นซิ่งที่เข้าเงื่อนไข... รอนาทีทองช่วงบ่าย")
+st.dataframe(df_scan, use_container_width=True, hide_index=True)
 
-# ==========================================
-# 🎯 MAIN MONITOR: 3 ขุนพลหลัก
-# ==========================================
+# ส่วนเจาะลึก MTC และ SIRI
 st.markdown("---")
-st.subheader("🎯 เจาะลึก 3 ขุนพลที่เลือก")
-selected_stocks = st.multiselect("เลือกหุ้นเพื่อดูละเอียด:", watchlist, default=["SIRI", "WHA", "MTC"])
-
 cols = st.columns(3)
+selected_stocks = st.multiselect("ส่องกล้อง:", watchlist, default=["MTC", "SIRI", "WHA"])
+
 for i, sym in enumerate(selected_stocks[:3]):
     data = get_advanced_metrics(sym)
     with cols[i]:
         with st.container(border=True):
             if data:
                 st.header(f"🛡️ {sym}")
-                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}", f"{data['change']:.2f}%")
+                st.metric("ราคา", f"{data['price']:.2f}", f"{data['change']:.2f}%")
                 
-                # กันขายหมู Logic
-                if sym == "SIRI":
-                    if data['price'] >= 1.66:
-                        st.success("💎 **SUPER HOLD (กันขายหมู)**\nทะลุ 1.66 วอลลุ่มต้องตาม รันไปต่ออาทิตย์หน้า!")
-                    elif 1.62 <= data['price'] <= 1.63:
-                        st.warning("🎯 **แบ่งทำกำไร**\nขาย 2,000 หุ้นตามแผน เพื่อลดความเสี่ยง")
-                
-                # MTC Logic
                 if sym == "MTC":
-                    if data['rvol'] < 1.0:
-                        st.info("🐢 **สถานะเฉื่อย**\nเทรนดีแต่ขาดแรงเหวี่ยง พิจารณาย้ายไปตัวซิ่งข้างบน")
+                    st.write(f"📊 RVOL: **{data['rvol']:.2f}**")
+                    if data['price'] < 39.75:
+                        st.info("🕒 รอเป้าหมาย 39.75 (หนีมีเชิง)")
+                    else:
+                        st.success("✅ เป้า 39.75 สำเร็จ!")
 
-                st.write(f"📊 **RSI:** {data['rsi']:.1f} | **RVOL:** {data['rvol']:.2f}")
-                st.write(f"📉 **แนวรับ:** {data['support']:.2f} | 📈 **แนวต้าน:** {data['resistance']:.2f}")
+                if sym == "SIRI":
+                    st.write(f"📈 RSI: **{data['rsi']:.1f}**")
+                    if data['price'] >= 1.62:
+                        st.warning("🎯 แบ่งทำกำไรตามแผน")
+                
+                st.write(f"📡 RSI: {data['rsi']:.1f} | 🌊 RVOL: {data['rvol']:.2f}")
 
 st.markdown("---")
-st.caption("ยุทธศาสตร์อาทิตย์หน้า: 'ทิ้งถ่วง เก็บสด ดักวาฬ' — จอมทัพโบ้เน้นความคม ไม่เน้นความเร็วที่ไร้ทิศทาง")
+st.caption("การถือหุ้นที่มีแต้มต่อ คือหัวใจของการเป็นผู้ชนะในระยะยาว — v4.7 Anti-Pig & Opportunity Sniper")
