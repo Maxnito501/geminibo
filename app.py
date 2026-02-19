@@ -4,12 +4,14 @@ import pandas as pd
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (v4.7 Opportunity Sniper)
+# ⚙️ CONFIG & ENGINE (v4.9 Professional Ledger)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v4.7: Opportunity Sniper", layout="wide", page_icon="🏹")
+st.set_page_config(page_title="GeminiBo v4.9: Professional Ledger", layout="wide", page_icon="📓")
 
-# ค่าธรรมเนียมเฉลี่ย (รวม VAT)
+# ค่าธรรมเนียมเฉลี่ย (รวม VAT) ประมาณ 0.168% ต่อขา
 TOTAL_FEE_FACTOR = 0.00168 
+GEMINI_PRO_COST = 790.0
+SETSMART_COST = 1000.0
 
 def get_advanced_metrics(symbol):
     try:
@@ -21,7 +23,6 @@ def get_advanced_metrics(symbol):
         prev_price = df['Close'].iloc[-2]
         change_pct = ((price - prev_price) / prev_price) * 100
         
-        # RSI & RVOL
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -35,72 +36,110 @@ def get_advanced_metrics(symbol):
     except: return None
 
 # ==========================================
-# 📊 SIDEBAR: MTC TACTICAL (100/100 Plan)
+# 💾 DATA STORAGE (Session State)
 # ==========================================
-st.sidebar.title("⚔️ ยุทธวิธี MTC 100/100")
-st.sidebar.info("แผน: ขาย 100 ที่ 39.75 | รัน 100 สู่ 42.00")
-
-with st.sidebar.expander("🐌 สถานะ MTC รายงานตัว", expanded=True):
-    current_mtc = st.number_input("ราคา MTC ปัจจุบัน", value=39.50, step=0.25)
-    if current_mtc >= 39.75:
-        st.success("🎯 **ถึงเป้าแรก!** ขาย 100 หุ้นทันที")
-    elif current_mtc >= 40.00:
-        st.error("🔥 **BREAKOUT!** 100 หุ้นที่เหลือรันยาว")
-
-st.sidebar.warning("⚠️ **คำเตือนวันศุกร์:** ระวังหุ้นร้อน (Hot Stocks) เทขายทำกำไรช่วงบ่าย")
+if 'trade_history' not in st.session_state:
+    st.session_state.trade_history = []
 
 # ==========================================
-# 🏹 MAIN DASHBOARD
+# 📊 NAVIGATION TABS
 # ==========================================
-st.title("🏹 Opportunity Sniper v4.7")
+tab1, tab2 = st.tabs(["🏹 ศูนย์บัญชาการ (Commander)", "📓 บัญชีรายเดือน (Trade Ledger)"])
 
-# ส่วนสแกนหาตัวซิ่งแทนที่ MTC (กรองหุ้นร้อนออก)
-st.subheader("🔍 สแกนหา 'หุ้นซิ่งเทรนสวย' (เลี่ยงหุ้นร้อนเกินไป)")
-watchlist = ["WHA", "ROJNA", "AMATA", "SIRI", "MTC", "CPALL", "SAWAD", "PLANB", "THCOM"]
-scan_results = []
-for sym in watchlist:
-    data = get_advanced_metrics(sym)
-    if data:
-        status = "รอดูเชิง"
-        # เพิ่มเงื่อนไข: หุ้นที่ RSI < 70 เพื่อเลี่ยงตัวที่ร้อนเกินไป (Overbought)
-        if data['rvol'] > 1.3 and 45 < data['rsi'] < 65: status = "🚀 พร้อมซิ่ง (เทรนดี)"
-        elif data['rsi'] >= 70: status = "🔥 หุ้นร้อน (ระวังโดนเท)"
-        elif data['rvol'] < 0.8: status = "🐢 เฉื่อย/พักฐาน"
+# --- TAB 1: COMMANDER ---
+with tab1:
+    st.title("🏹 GeminiBo v4.9: Commander")
+    
+    # ส่วนวิเคราะห์เฉพาะหน้า (SIRI / MTC / ตัวเลือกเสริม)
+    cols = st.columns(3)
+    watchlist = ["WHA", "ROJNA", "AMATA", "SIRI", "MTC", "CPALL", "SAWAD", "PLANB", "THCOM"]
+    selected_stocks = st.multiselect("เจาะลึกสมรภูมิ:", watchlist, default=["SIRI", "MTC", "WHA"])
+
+    for i, sym in enumerate(selected_stocks[:3]):
+        data = get_advanced_metrics(sym)
+        with cols[i]:
+            with st.container(border=True):
+                if data:
+                    st.header(f"🛡️ {sym}")
+                    st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}", f"{data['change']:.2f}%")
+                    
+                    if sym == "SIRI":
+                        if data['price'] >= 1.66:
+                            st.error("💎 **ห้ามขายหมู!** ทะลุต้านใหญ่แล้ว รันต่อ")
+                        elif 1.62 <= data['price'] <= 1.63:
+                            st.warning("🎯 **Target Hit:** แบ่งขาย 2,000 หุ้น")
+                    
+                    if sym == "MTC":
+                        st.info("🕒 **MTC Strategy:** ตั้งขาย 100 หุ้นที่ 39.75 (หนีมีเชิง)")
+
+                    st.write(f"📡 RSI: {data['rsi']:.1f} | 🌊 RVOL: {data['rvol']:.2f}")
+
+# --- TAB 2: TRADE LEDGER ---
+with tab2:
+    st.title("📓 สมุดบันทึกการรบ (Monthly Ledger)")
+    
+    # แบบฟอร์มกรอกข้อมูลการเทรด
+    with st.expander("➕ เพิ่มบันทึกการเทรดใหม่", expanded=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            t_date_buy = st.date_input("วันที่ซื้อ", datetime.now())
+            t_symbol = st.selectbox("หุ้น", watchlist)
+            t_buy_price = st.number_input("ราคาที่ได้ (ซื้อ)", value=1.000, step=0.001, format="%.3f")
+        with c2:
+            t_date_sell = st.date_input("วันที่ขาย", datetime.now())
+            t_qty = st.number_input("จำนวนหุ้น", value=100, step=100)
+            t_sell_price = st.number_input("ราคาที่ขาย", value=1.000, step=0.001, format="%.3f")
+        with c3:
+            st.write("📌 **การคำนวณเบื้องต้น**")
+            gross_buy = t_buy_price * t_qty
+            gross_sell = t_sell_price * t_qty
+            fee_buy = gross_buy * TOTAL_FEE_FACTOR
+            fee_sell = gross_sell * TOTAL_FEE_FACTOR
+            total_fee = fee_buy + fee_sell
+            net_profit = (gross_sell - gross_buy) - total_fee
+            
+            st.write(f"ค่าธรรมเนียม+VAT: {total_fee:,.2f} บ.")
+            st.subheader(f"กำไรสุทธิ: {net_profit:,.2f} บ.")
+            
+            if st.button("💾 บันทึกลงสมุดบัญชี"):
+                new_record = {
+                    "วันที่ซื้อ": t_date_buy,
+                    "วันที่ขาย": t_date_sell,
+                    "หุ้น": t_symbol,
+                    "ราคาซื้อ": t_buy_price,
+                    "ราคาขาย": t_sell_price,
+                    "จำนวน": t_qty,
+                    "ค่าธรรมเนียม": total_fee,
+                    "กำไรสุทธิ": net_profit
+                }
+                st.session_state.trade_history.append(new_record)
+                st.toast("บันทึกเรียบร้อย!")
+
+    # ตารางแสดงประวัติการเทรด
+    if st.session_state.trade_history:
+        df_history = pd.DataFrame(st.session_state.trade_history)
+        st.markdown("---")
+        st.subheader("📋 ประวัติการปิดรอบเดือนนี้")
+        st.dataframe(df_history, use_container_width=True, hide_index=True)
         
-        scan_results.append({
-            "หุ้น": sym, "ราคา": f"{data['price']:.2f}",
-            "RVOL": round(data['rvol'], 2), "RSI": round(data['rsi'], 1), "สถานะ": status
-        })
-
-df_scan = pd.DataFrame(scan_results)
-st.dataframe(df_scan, use_container_width=True, hide_index=True)
-
-# ส่วนเจาะลึก MTC และ SIRI
-st.markdown("---")
-cols = st.columns(3)
-selected_stocks = st.multiselect("ส่องกล้อง:", watchlist, default=["MTC", "SIRI", "WHA"])
-
-for i, sym in enumerate(selected_stocks[:3]):
-    data = get_advanced_metrics(sym)
-    with cols[i]:
-        with st.container(border=True):
-            if data:
-                st.header(f"🛡️ {sym}")
-                st.metric("ราคา", f"{data['price']:.2f}", f"{data['change']:.2f}%")
-                
-                if sym == "MTC":
-                    st.write(f"📊 RVOL: **{data['rvol']:.2f}**")
-                    if data['price'] < 39.75:
-                        st.info("🕒 รอเป้าหมาย 39.75 (หนีมีเชิง)")
-                    else:
-                        st.success("✅ เป้า 39.75 สำเร็จ!")
-
-                if sym == "SIRI":
-                    st.write(f"📈 RSI: **{data['rsi']:.1f}**")
-                    if data['price'] >= 1.62:
-                        st.warning("🎯 แบ่งทำกำไรตามแผน")
-                
-                st.write(f"📡 RSI: {data['rsi']:.1f} | 🌊 RVOL: {data['rvol']:.2f}")
+        # ส่วนสรุป ROI
+        total_net_profit = df_history["กำไรสุทธิ"].sum()
+        remaining_after_ai = total_net_profit - GEMINI_PRO_COST
+        
+        c_res1, c_res2, c_res3 = st.columns(3)
+        c_res1.metric("💰 กำไรสุทธิรวม (หลังหักค่าต๋ง)", f"{total_net_profit:,.2f} บ.")
+        c_res2.metric("🤖 หลังหักค่า Gemini Pro", f"{remaining_after_ai:,.2f} บ.", delta_color="normal")
+        
+        if remaining_after_ai >= SETSMART_COST:
+            c_res3.success(f"✅ พร้อมสมัคร SetSmart! (เหลือเงิน {remaining_after_ai-SETSMART_COST:,.2f} บ.)")
+        else:
+            c_res3.warning(f"🕒 ขาดอีก {SETSMART_COST-remaining_after_ai:,.2f} บ. เพื่อค่า SetSmart")
+            
+        if st.button("🗑️ ล้างข้อมูลทั้งหมด (เริ่มเดือนใหม่)"):
+            st.session_state.trade_history = []
+            st.rerun()
+    else:
+        st.info("ยังไม่มีข้อมูลการรบ... เริ่มบันทึกไม้แรกเพื่อดูผลงานรายเดือนครับพี่โบ้!")
 
 st.markdown("---")
-st.caption("การถือหุ้นที่มีแต้มต่อ คือหัวใจของการเป็นผู้ชนะในระยะยาว — v4.7 Anti-Pig & Opportunity Sniper")
+st.caption("v4.9 Professional Ledger — รบอย่างจอมทัพ บริหารอย่างนักธุรกิจ เพื่อเป้าหมายแสนแรก")
