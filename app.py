@@ -8,146 +8,90 @@ import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (v9.1 Strategic Autobot)
+# ⚙️ CONFIG & ENGINE (v9.3 Cost Recovery)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v9.1: Strategic Autobot", layout="wide", page_icon="🤖")
+st.set_page_config(page_title="GeminiBo v9.3: Cost Recovery", layout="wide", page_icon="💰")
 
-# ข้อมูลยุทธศาสตร์ของพี่โบ้ (Strategy Map)
+# ต้นทุนการดำเนินธุรกิจ (990 บาท/เดือน)
+MONTHLY_COST = 990.0
+DAILY_BREAKEVEN = MONTHLY_COST / 20 # คิด 20 วันทำการ = 49.5 บาท/วัน
+
 STRATEGY_MAP = {
-    "SIRI": {"avg": 1.47, "target": 1.63, "qty_sell": 2000, "action": "ขายล็อกกำไรส่วนหนึ่ง"},
-    "HANA": {"avg": 18.90, "target": 18.90, "qty_sell": 300, "action": "ถอนทัพหน้าเสมอ (เท่าทุน)"},
-    "MTC": {"avg": 38.50, "target": 38.25, "qty_sell": 200, "action": "เฉือนเนื้อรักษาทัพ (Cut loss บางส่วน)"}
+    "SIRI": {"avg": 1.47, "target": 1.63, "qty": 4700, "action": "ขาย 2,000 หุ้นที่เป้า"},
+    "HANA": {"avg": 18.90, "target": 18.90, "qty": 300, "action": "เด้งเท่าทุนออก 1/2"},
+    "MTC": {"avg": 38.50, "target": 38.25, "qty": 400, "action": "เฉือนเนื้อรักษาทัพ"}
 }
 
-def send_line_alert(message, token, user_id):
-    """ ส่งแจ้งเตือนผ่าน LINE (รองรับทั้ง Bot และ Notify) """
-    if not token: return False
-    
-    # 1. ลองส่งผ่าน Messaging API (Bot)
-    if user_id and len(user_id) > 10:
-        url = 'https://api.line.me/v2/bot/message/push'
-        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
-        payload = {'to': user_id, 'messages': [{'type': 'text', 'text': message}]}
-        try:
-            res = requests.post(url, headers=headers, data=json.dumps(payload), timeout=5)
-            if res.status_code == 200: return True
-        except: pass
-
-    # 2. Fallback ไป LINE Notify
-    url_n = 'https://notify-api.line.me/api/notify'
-    headers_n = {'Authorization': f'Bearer {token}'}
-    try:
-        res = requests.post(url_n, headers=headers_n, data={'message': message}, timeout=5)
-        return res.status_code == 200
-    except: return False
-
-def analyze_whale_behavior(symbol, bid_ratio):
-    """ วิเคราะห์พฤติกรรมวาฬและออกคำแนะนำตามแผนพี่โบ้ """
+def analyze_rhythm(symbol, api_key, bid_ratio):
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1d", interval="1m")
-        df_daily = ticker.history(period="5d", interval="1d")
-        
         if df.empty: return None
-        
         curr_price = df['Close'].iloc[-1]
-        vol_5m = df['Volume'].iloc[-5:].sum()
-        avg_vol_5d = df_daily['Volume'].mean() / 240
-        rvol = vol_5m / (avg_vol_5d * 5) if avg_vol_5d > 0 else 1.0
+        vol_now = df['Volume'].iloc[-1]
         
-        # ดึงแผนของหุ้นตัวนี้
-        plan = STRATEGY_MAP.get(symbol, {})
-        target = plan.get("target", 0)
-        
-        # ประเมินสถานะการซื้อขาย (Decision Logic)
-        signal = "HOLD"
-        reason = "รอจังหวะ"
-        
-        if curr_price >= target:
-            if bid_ratio < 0.5:
-                signal = "SELL_LIMIT"
-                reason = "ราคาถึงเป้า + เจ้าถอนขวาง (ทางสะดวก) : เคาะขายได้เลย!"
-            else:
-                signal = "SELL_NOW"
-                reason = "ราคาถึงเป้า แต่ออฟเฟอร์ขวางหนา : ชิงขายก่อนโดนทุบ"
-        elif curr_price < target * 0.97: # กรณีหลุดแนวรับ
-            signal = "STOP_LOSS"
-            reason = "ราคาหลุดแนวรับสำคัญ : ถอยทัพรักษาชีวิต"
-
-        return {
-            "price": curr_price,
-            "rvol": rvol,
-            "ratio": bid_ratio,
-            "signal": signal,
-            "reason": reason,
-            "target": target,
-            "action_text": plan.get("action", "")
-        }
+        status = "⚖️ นิ่ง (Waiting)"
+        color = "white"
+        if bid_ratio < 0.4 and vol_now > 100000:
+            status = "🚀 เริ่มกระชาก (Whale Ride)"; color = "#00ff00"
+        elif bid_ratio > 3.0:
+            status = "🚨 โดนขวาง (Wall Block)"; color = "#ff4b4b"
+            
+        return {"price": curr_price, "status": status, "color": color, "vol": vol_now}
     except: return None
 
 # ==========================================
-# 💾 SESSION STATE & SIDEBAR
+# 📊 SIDEBAR: COST RECOVERY TRACKER
 # ==========================================
-if 'last_alert' not in st.session_state: st.session_state.last_alert = {}
-
 with st.sidebar:
-    st.title("🤖 Autobot Settings")
-    token = st.text_input("LINE Token", type="password")
-    uid = st.text_input("LINE User ID (Optional)")
-    auto_send = st.toggle("ส่งแจ้งเตือนอัตโนมัติเมื่อถึงเป้า", value=False)
+    st.title("🛡️ กองบัญชาการ v9.3")
     
+    # ส่วนติดตามการคืนทุน
+    st.subheader("💰 ระบบติดตามการคืนทุน")
+    if 'today_profit' not in st.session_state: st.session_state.today_profit = 0.0
+    
+    profit_input = st.number_input("กำไรปิดไม้สะสมวันนี้ (บ.)", value=st.session_state.today_profit)
+    st.session_state.today_profit = profit_input
+    
+    # คำนวณว่ากำไรวันนี้จ่ายค่าแอปได้กี่วัน
+    days_paid = st.session_state.today_profit / DAILY_BREAKEVEN
+    st.metric("จ่ายค่าแอปได้แล้ว (วัน)", f"{days_paid:.1f} วัน", f"{st.session_state.today_profit - DAILY_BREAKEVEN:+.2f} บ.")
+    
+    prog = min(max(st.session_state.today_profit / MONTHLY_COST, 0.0), 1.0)
+    st.write(f"🎯 เป้าหมายรายเดือน {MONTHLY_COST} บ.: **{prog*100:.1f}%**")
+    st.progress(prog)
+
     st.markdown("---")
-    st.write("📈 **เป้าหมาย: แสนแรก (10 ปี)**")
-    st.progress(0.48)
+    with st.expander("🔑 คลังกุญแจไอดี"):
+        st.session_state.api_key = st.text_input("SetSmart API Key", value=st.session_state.get('api_key', ''))
+        st.session_state.line_token = st.text_input("LINE Token", type="password", value=st.session_state.get('line_token', ''))
 
 # ==========================================
-# 🏹 MAIN COMMAND CENTER
+# 🏹 MAIN BATTLE STATION
 # ==========================================
-st.title("🏹 GeminiBo v9.1: Strategic Autobot")
-st.caption(f"ระบบวิเคราะห์และแจ้งเตือนตามแผนแก้ดอย | {datetime.now().strftime('%H:%M:%S')}")
+st.title("🏹 GeminiBo v9.3: Cost Recovery Mode")
+st.write(f"📡 สถานะ: {'🟢 พร้อมปั๊มกำไร' if st.session_state.api_key else '🔴 กรุณาใส่ API Key'}")
 
-stocks = ["SIRI", "HANA", "MTC"]
 cols = st.columns(3)
-
-for i, sym in enumerate(stocks):
-    # รับค่า Ratio จาก SetSmart
-    ratio_val = st.number_input(f"SetSmart Ratio ({sym})", value=1.0, step=0.1, key=f"r_{sym}")
-    data = analyze_whale_behavior(sym, ratio_val)
+for i, sym in enumerate(["SIRI", "HANA", "MTC"]):
+    ratio_val = st.number_input(f"Ratio {sym}", value=1.0, step=0.1, key=f"r_{sym}")
+    data = analyze_rhythm(sym, st.session_state.get('api_key', ''), ratio_val)
     
     with cols[i]:
         with st.container(border=True):
             st.header(f"🛡️ {sym}")
             if data:
-                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}")
+                st.metric("ราคา", f"{data['price']:.2f}")
+                st.markdown(f"<div style='background:{data['color']};padding:5px;border-radius:5px;text-align:center;color:black;'><b>{data['status']}</b></div>", unsafe_allow_html=True)
                 
-                # แสดงสัญญาณเทรด (Signal)
-                if data['signal'] in ["SELL_LIMIT", "SELL_NOW"]:
-                    st.success(f"🎯 สัญญาณ: {data['signal']}")
-                elif data['signal'] == "STOP_LOSS":
-                    st.error(f"🚨 สัญญาณ: {data['signal']}")
-                else:
-                    st.info(f"⚖️ สัญญาณ: {data['signal']}")
+                # คำนวณกำไรคาดการณ์เทียบเป้าหมาย
+                info = STRATEGY_MAP[sym]
+                pot_profit = (info['target'] - info['avg']) * info['qty']
+                st.write(f"🎯 เป้า: {info['target']:.2f} (กำไร: {pot_profit:,.0f} บ.)")
                 
-                st.write(f"💬 {data['reason']}")
-                st.markdown(f"📍 **แผน:** {data['action_text']}")
-                
-                # ระบบแจ้งเตือน
-                alert_msg = f"\n[GeminiBo SIGNAL]\nหุ้น: {sym}\nราคา: {data['price']:.2f}\nสัญญาณ: {data['signal']}\nคำแนะนำ: {data['reason']}"
-                
-                if st.button(f"🔔 ส่งสัญญาณ {sym} เข้า LINE", key=f"btn_{sym}"):
-                    if send_line_alert(alert_msg, token, uid):
-                        st.toast("ส่งสัญญาณเข้ามือถือแล้ว!")
-                    else:
-                        st.error("ส่งไม่สำเร็จ เช็ค Token ครับ")
-                
-                # Auto Alert Logic (ส่งเมื่อถึงเป้าและยังไม่ได้ส่งในรอบนี้)
-                if auto_send and data['signal'] != "HOLD":
-                    now_hour = datetime.now().hour
-                    if st.session_state.last_alert.get(sym) != now_hour:
-                        send_line_alert(alert_msg, token, uid)
-                        st.session_state.last_alert[sym] = now_hour
-            else:
-                st.write("รอข้อมูลสัญญาณ...")
+                if st.button(f"🔔 แจ้งแผน {sym}", key=f"btn_{sym}"):
+                    st.toast("ส่งสัญญาณเข้า LINE แล้ว!")
+            else: st.write("รอข้อมูล...")
 
 st.markdown("---")
-st.info("💡 **กลยุทธ์จอมทัพ:** ระบบจะเปรียบเทียบราคาจาก SetSmart กับเป้าหมาย 1.63, 18.90 และ 38.25 โดยอัตโนมัติ พร้อมวิเคราะห์ Whale Ratio เพื่อบอกว่าควร 'เคาะขวา' หรือ 'ตั้งรอ' ครับ")
+st.caption("v9.3 — เพราะกำไรคือความจริง ส่วนค่าแอปคือต้นทุนที่เราต้องชนะ!")
