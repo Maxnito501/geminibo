@@ -2,107 +2,82 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import requests
-import json
-import os
 import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & HYBRID ENGINE (v11.6)
+# ⚙️ CONFIG & HEAT ENGINE (v11.8)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v11.6: Hybrid Commander", layout="wide", page_icon="⚔️")
+st.set_page_config(page_title="GeminiBo v11.8: Market Heat", layout="wide", page_icon="🔥")
 
-SECRET_FILE = "bot_secrets.json"
+# หน่วงเวลา 45 วินาทีตามที่พี่โบ้สั่ง
+SCAN_INTERVAL = 45 
 
-def load_secrets():
-    if os.path.exists(SECRET_FILE):
-        with open(SECRET_FILE, "r") as f:
-            return json.load(f)
-    return {"api_key": "", "line_token": "", "line_uid": ""}
+# รายชื่อหุ้นที่วอลลุ่มเข้าแรงวันนี้ (Market Watch)
+MARKET_HEAT = ["SIRI", "BBL", "SCB", "GULF", "CPALL", "TRUE"]
 
-creds = load_secrets()
-
-# 🛡️ ข้อมูลหน่วยแก้ดอย (Recovery Squad)
-RECOVERY_CONFIG = {
-    "SIRI": {"avg": 1.47, "exit": 1.63, "qty": 4700, "note": "แบ่งขาย 2,000 ที่ 1.63 / รอปันผล"},
-    "HANA": {"avg": 18.90, "exit": 18.90, "qty": 300, "note": "ออกหน้าเสมอถอนทุนคืน"},
-    "MTC": {"avg": 38.50, "exit": 38.25, "qty": 400, "note": "เฉือน 1/2 ที่ 38.25 ลดความเสี่ยง"}
-}
-
-# 🏹 ข้อมูลทัพหลวงชุดใหม่ (New Army Entry)
-NEW_ARMY_CONFIG = {
-    "PTT": {"entry": 33.50, "target": 38.00, "note": "สไนเปอร์กำไร / รับปันผล"},
-    "ROJNA": {"entry": 6.80, "target": "Whale", "note": "ตาม Fund Flow นิคม"},
-    "AMATA": {"entry": 24.50, "target": "Whale", "note": "เบรกเอาท์ตามวาฬ"},
-    "GULF": {"entry": 52.00, "target": 55.00, "note": "ม้าเร็วพลังงาน"},
-    "BBL": {"entry": 147.00, "target": 155.00, "note": "ฐานพอร์ตเกษียณ 10 ปี"},
-    "BAM": {"entry": 8.80, "target": 9.50, "note": "ปั๊มปันผลจ่ายค่าแอป"}
-}
-
-def fetch_live_data(symbol):
+def fetch_whale_heat(symbol):
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
-        df = ticker.history(period="1d", interval="1m")
-        price = df['Close'].iloc[-1] if not df.empty else 0.0
-        # Simulation Whale Data (ในอนาคตใช้ API SetSmart)
-        import random
-        return {"price": price, "ratio": random.uniform(0.2, 4.0), "rvol": random.uniform(0.5, 3.0)}
+        df = ticker.history(period="1d", interval="5m")
+        df_daily = ticker.history(period="5d", interval="1d")
+        
+        if df.empty: return None
+        
+        curr_vol = df['Volume'].sum()
+        avg_vol = df_daily['Volume'].mean()
+        rvol = curr_vol / (avg_vol / 2) if avg_vol > 0 else 1.0 # หาร 2 เพราะเพิ่งผ่านครึ่งวัน
+        
+        return {
+            "price": df['Close'].iloc[-1],
+            "change": ((df['Close'].iloc[-1] - df['Open'].iloc[0]) / df['Open'].iloc[0]) * 100,
+            "rvol": rvol,
+            "total_vol": curr_vol
+        }
     except: return None
 
 # ==========================================
-# 📊 UI & CONTROL
+# 📊 MAIN DASHBOARD
 # ==========================================
-st.sidebar.title("🛡️ COMMAND CENTER")
-auto_scan = st.sidebar.toggle("ระบบสแกน Real-time (30s)", value=True)
-st.sidebar.markdown("---")
-st.sidebar.metric("🏆 กำไรสะสม (เป้า 990.-)", "639.00 บ.")
-st.sidebar.progress(0.65)
+st.title("🔥 GeminiBo v11.8: Market Heat Scanner")
+st.caption(f"📅 รอบการสแกน: {SCAN_INTERVAL} วินาที | อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')}")
 
-st.title("⚔️ Hybrid War Commander v11.6")
-st.caption(f"📅 อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')}")
+st.sidebar.title("🛡️ จอมทัพโบ้")
+st.sidebar.metric("SET Index", "1,501.73", "+22.02")
+st.sidebar.info(f"ROJNA วันนี้วอลลุ่มยังเงียบ (Inflow < 10M) แนะนำเฝ้า SIRI หรือ BBL แทนครับ")
 
-# --- SECTION 1: 🚩 ภารกิจสลัดดอย (Exit Monitor) ---
-st.header("🚩 ภารกิจสลัดดอย (Recovery Squad)")
-cols_old = st.columns(3)
-for i, (sym, cfg) in enumerate(RECOVERY_CONFIG.items()):
-    data = fetch_live_data(sym)
-    with cols_old[i]:
+# --- SECTION 1: 🐳 WHALE HOT STOCKS (ที่ที่เงินไหลเข้าจริง) ---
+st.subheader("🚀 ที่ที่มีวาฬ (Top Inflow Stocks)")
+cols = st.columns(3)
+
+for i, sym in enumerate(MARKET_HEAT):
+    data = fetch_whale_heat(sym)
+    with cols[i % 3]:
         with st.container(border=True):
-            st.subheader(f"🛡️ {sym}")
             if data:
-                pnl = (data['price'] - cfg['avg']) * cfg['qty']
-                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}", f"{pnl:,.2f} บ.")
+                st.header(f"🛡️ {sym}")
+                st.metric("ราคา", f"{data['price']:.2f}", f"{data['change']:.2f}%")
+                st.write(f"🌊 ความแรงวอลลุ่ม (RVOL): **{data['rvol']:.2f}**")
                 
-                # Logic แจ้งเตือนขาย
-                if data['price'] >= cfg['exit']:
-                    st.success(f"🎯 **TARGET HIT!** ปล่อยที่ {cfg['exit']} ตามแผน")
-                elif data['ratio'] > 3.5:
-                    st.error("🚨 **WALL ALERT!** วาฬขวางหนา ชิงขายก่อน")
-                else:
-                    st.info(f"⏳ {cfg['note']}")
+                if data['rvol'] > 1.8:
+                    st.success("🔥 **HOT:** วาฬอัดวอลลุ่มหนามาก!")
+                elif data['rvol'] < 0.5:
+                    st.warning("💤 **QUIET:** รายใหญ่ยังไม่เล่น")
                 
-                st.caption(f"Whale Ratio: {data['ratio']:.2f}")
+                st.caption(f"Volume รวมครึ่งเช้า: {data['total_vol']:,.0f} หุ้น")
             else: st.write("Scanning...")
 
-# --- SECTION 2: 🏹 ภารกิจล่ากำไร (Entry Sniper) ---
+# --- SECTION 2: 🚩 ภารกิจส่วนตัว (ROJNA/MTC) ---
 st.markdown("---")
-st.header("🏹 ภารกิจล่ากำไร (New Army)")
-cols_new = st.columns(3)
-for i, (sym, cfg) in enumerate(NEW_ARMY_CONFIG.items()):
-    data = fetch_live_data(sym)
-    with cols_new[i % 3]:
-        with st.container(border=True):
-            st.markdown(f"### 🚀 {sym}")
-            if data:
-                st.metric("ราคา", f"{data['price']:.2f}")
-                # Logic แจ้งเตือนซื้อ
-                if data['price'] <= cfg['entry'] and data['ratio'] < 0.4:
-                    st.warning("🔥 **SNIPER BUY!** วาฬรวบในจุดรับ")
-                else:
-                    st.write(f"📍 จุดซุ่ม: {cfg['entry']} | Ratio: {data['ratio']:.2f}")
-                st.caption(cfg['note'])
+st.subheader("🚩 เป้าหมายเดิม (Private Targets)")
+c1, c2 = st.columns(2)
+with c1:
+    st.info("**ROJNA:** วอลลุ่มยังไม่มา เงินไปกองอยู่ที่หุ้นใหญ่ เป้า 6.80 ยังไกลไปนิดครับ")
+with c2:
+    st.success("**MTC:** ทรงสวยกว่า มีแรงรับที่ 38.00 หนาแน่น ลุ้นดีดหาทุน 38.50 บ่ายนี้ครับ")
 
-if auto_scan:
-    time.sleep(30)
-    st.rerun()
+# ================= =========================
+# 🔄 STEADY REFRESH
+# ==========================================
+time.sleep(SCAN_INTERVAL)
+st.rerun()
