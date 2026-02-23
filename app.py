@@ -9,9 +9,9 @@ import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENTRY ENGINE (v11.5)
+# ⚙️ CONFIG & HYBRID ENGINE (v11.6)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v11.5: Entry Sniper", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="GeminiBo v11.6: Hybrid Commander", layout="wide", page_icon="⚔️")
 
 SECRET_FILE = "bot_secrets.json"
 
@@ -23,80 +23,86 @@ def load_secrets():
 
 creds = load_secrets()
 
-# 🏹 ข้อมูลทัพหลวงชุดใหม่ (จุดดักซุ่ม & เงื่อนไขเข้าตี)
-NEW_ARMY_CONFIG = {
-    "PTT": {"entry": 33.50, "target": 38.00, "type": "Dividend", "note": "ช้อนหลัง XD หรือเมื่อ Ratio < 0.5"},
-    "ROJNA": {"entry": 6.80, "target": "Whale", "type": "Growth", "note": "เข้าเมื่อ Ratio < 0.4 + RVOL > 1.5"},
-    "AMATA": {"entry": 24.50, "target": "Whale", "type": "Growth", "note": "นิคมเบรกเอาท์ตาม Fund Flow"},
-    "GULF": {"entry": 52.00, "target": 58.00, "type": "Tech/Power", "note": "ม้าเร็วข้ามต้าน 55.00"},
-    "BBL": {"entry": 147.00, "target": 155.00, "type": "Value", "note": "ทัพหลวงเกษียณ 10 ปี (NVDR ชอบ)"},
-    "BAM": {"entry": 8.80, "target": 9.50, "type": "CashFlow", "note": "เครื่องผลิตปันผลจ่ายค่าแอป"}
+# 🛡️ ข้อมูลหน่วยแก้ดอย (Recovery Squad)
+RECOVERY_CONFIG = {
+    "SIRI": {"avg": 1.47, "exit": 1.63, "qty": 4700, "note": "แบ่งขาย 2,000 ที่ 1.63 / รอปันผล"},
+    "HANA": {"avg": 18.90, "exit": 18.90, "qty": 300, "note": "ออกหน้าเสมอถอนทุนคืน"},
+    "MTC": {"avg": 38.50, "exit": 38.25, "qty": 400, "note": "เฉือน 1/2 ที่ 38.25 ลดความเสี่ยง"}
 }
 
-# ==========================================
-# 🐳 AUTO-WHALE MONITOR (Simulation Ready)
-# ==========================================
-def fetch_whale_status(symbol):
+# 🏹 ข้อมูลทัพหลวงชุดใหม่ (New Army Entry)
+NEW_ARMY_CONFIG = {
+    "PTT": {"entry": 33.50, "target": 38.00, "note": "สไนเปอร์กำไร / รับปันผล"},
+    "ROJNA": {"entry": 6.80, "target": "Whale", "note": "ตาม Fund Flow นิคม"},
+    "AMATA": {"entry": 24.50, "target": "Whale", "note": "เบรกเอาท์ตามวาฬ"},
+    "GULF": {"entry": 52.00, "target": 55.00, "note": "ม้าเร็วพลังงาน"},
+    "BBL": {"entry": 147.00, "target": 155.00, "note": "ฐานพอร์ตเกษียณ 10 ปี"},
+    "BAM": {"entry": 8.80, "target": 9.50, "note": "ปั๊มปันผลจ่ายค่าแอป"}
+}
+
+def fetch_live_data(symbol):
     try:
-        # จำลองสถานะวาฬอิงจากข้อมูลตลาด (ในอนาคตใช้ API SetSmart จริง)
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1d", interval="1m")
         price = df['Close'].iloc[-1] if not df.empty else 0.0
-        
-        # Simulation Logic: สุ่ม Ratio เพื่อดูการแจ้งเตือน
+        # Simulation Whale Data (ในอนาคตใช้ API SetSmart)
         import random
-        sim_ratio = random.uniform(0.2, 4.0)
-        sim_rvol = random.uniform(0.5, 3.0)
-        
-        return {"price": price, "ratio": sim_ratio, "rvol": sim_rvol}
+        return {"price": price, "ratio": random.uniform(0.2, 4.0), "rvol": random.uniform(0.5, 3.0)}
     except: return None
 
 # ==========================================
-# 📊 MAIN DASHBOARD
+# 📊 UI & CONTROL
 # ==========================================
-st.sidebar.title("🛡️ ENTRY COMMANDER")
-auto_scan = st.sidebar.toggle("เปิดระบบสแกนจุดเข้าออโต้", value=True)
+st.sidebar.title("🛡️ COMMAND CENTER")
+auto_scan = st.sidebar.toggle("ระบบสแกน Real-time (10s)", value=True)
+st.sidebar.markdown("---")
+st.sidebar.metric("🏆 กำไรสะสม (เป้า 990.-)", "639.00 บ.")
+st.sidebar.progress(0.65)
 
-st.title("🎯 New Army Entry Sniper v11.5")
-st.caption(f"📅 สมรภูมิวันที่: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+st.title("⚔️ Hybrid War Commander v11.6")
+st.caption(f"📅 อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')}")
 
-# --- SECTION: 🏹 จังหวะเข้าทำ (Entry Alerts) ---
-st.subheader("🚩 เรดาร์ดักซุ่ม (Entry Radar)")
-cols = st.columns(3)
-
-for i, (sym, cfg) in enumerate(NEW_ARMY_CONFIG.items()):
-    data = fetch_whale_status(sym)
-    with cols[i % 3]:
+# --- SECTION 1: 🚩 ภารกิจสลัดดอย (Exit Monitor) ---
+st.header("🚩 ภารกิจสลัดดอย (Recovery Squad)")
+cols_old = st.columns(3)
+for i, (sym, cfg) in enumerate(RECOVERY_CONFIG.items()):
+    data = fetch_live_data(sym)
+    with cols_old[i]:
         with st.container(border=True):
-            st.markdown(f"### 🛡️ {sym}")
-            st.caption(f"ประเภท: {cfg['type']}")
-            
+            st.subheader(f"🛡️ {sym}")
             if data:
-                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}")
+                pnl = (data['price'] - cfg['avg']) * cfg['qty']
+                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}", f"{pnl:,.2f} บ.")
                 
-                # Logic วิเคราะห์จุดเข้า
-                is_entry_price = data['price'] <= cfg['entry']
-                is_whale_in = data['ratio'] < 0.4
-                
-                if is_entry_price and is_whale_in:
-                    st.success("🚀 **SNIPER BUY!** วาฬลากในจุดรับ")
-                elif is_entry_price:
-                    st.warning("⚖️ **WAITING:** ราคาได้ แต่ Ratio ยังไม่สวย")
-                elif is_whale_in:
-                    st.info("🌊 **WHALE ACTIVE:** วาฬมาแต่ราคาสูงไปนิด")
+                # Logic แจ้งเตือนขาย
+                if data['price'] >= cfg['exit']:
+                    st.success(f"🎯 **TARGET HIT!** ปล่อยที่ {cfg['exit']} ตามแผน")
+                elif data['ratio'] > 3.5:
+                    st.error("🚨 **WALL ALERT!** วาฬขวางหนา ชิงขายก่อน")
                 else:
-                    st.write("⌛ **PATIENCE:** รอชัยภูมิที่ได้เปรียบ")
+                    st.info(f"⏳ {cfg['note']}")
                 
-                st.markdown("---")
-                st.write(f"📊 Ratio: **{data['ratio']:.2f}** | RVOL: **{data['rvol']:.2f}**")
-                st.write(f"📍 จุดดักซุ่ม: **{cfg['entry']:.2f}**")
-                st.info(f"💡 {cfg['note']}")
-            else:
-                st.write("กำลังเชื่อมต่อตาทิพย์...")
+                st.caption(f"Whale Ratio: {data['ratio']:.2f}")
+            else: st.write("Scanning...")
 
-# ================= =========================
-# 🔄 AUTO REFRESH
-# ==========================================
+# --- SECTION 2: 🏹 ภารกิจล่ากำไร (Entry Sniper) ---
+st.markdown("---")
+st.header("🏹 ภารกิจล่ากำไร (New Army)")
+cols_new = st.columns(3)
+for i, (sym, cfg) in enumerate(NEW_ARMY_CONFIG.items()):
+    data = fetch_live_data(sym)
+    with cols_new[i % 3]:
+        with st.container(border=True):
+            st.markdown(f"### 🚀 {sym}")
+            if data:
+                st.metric("ราคา", f"{data['price']:.2f}")
+                # Logic แจ้งเตือนซื้อ
+                if data['price'] <= cfg['entry'] and data['ratio'] < 0.4:
+                    st.warning("🔥 **SNIPER BUY!** วาฬรวบในจุดรับ")
+                else:
+                    st.write(f"📍 จุดซุ่ม: {cfg['entry']} | Ratio: {data['ratio']:.2f}")
+                st.caption(cfg['note'])
+
 if auto_scan:
     time.sleep(10)
     st.rerun()
