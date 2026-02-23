@@ -9,9 +9,9 @@ import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & AUTO-FETCH ENGINE (v11.0)
+# ⚙️ CONFIG & ENTRY ENGINE (v11.5)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v11.0: Auto-Whale", layout="wide", page_icon="🤖")
+st.set_page_config(page_title="GeminiBo v11.5: Entry Sniper", layout="wide", page_icon="🎯")
 
 SECRET_FILE = "bot_secrets.json"
 
@@ -21,130 +21,82 @@ def load_secrets():
             return json.load(f)
     return {"api_key": "", "line_token": "", "line_uid": ""}
 
-def save_secrets(api_key, line_token, line_uid):
-    with open(SECRET_FILE, "w") as f:
-        json.dump({"api_key": api_key, "line_token": line_token, "line_uid": line_uid}, f)
-
-# โหลดกุญแจที่พี่โบ้จ่ายเงินซื้อมา
 creds = load_secrets()
 
-# 🛡️ รายชื่อกองทัพ (SIRI, HANA, MTC + New Army)
-WATCHLIST = {
-    "RECOVERY": {
-        "SIRI": {"target": 1.63, "qty": 4700, "note": "ทุน 1.47 | รันไป 1.63"},
-        "HANA": {"target": 18.90, "qty": 300, "note": "ทุน 18.90 | เด้งออกหน้าเสมอ"},
-        "MTC": {"target": 38.50, "qty": 400, "note": "ทุน 38.50 | เฉือนออกครึ่งหนึ่ง"}
-    },
-    "NEW_ARMY": {
-        "PTT": {"target": 38.00, "qty": 100, "note": "สไนเปอร์ / รับปันผล"},
-        "ROJNA": {"target": "Whale", "qty": 0, "note": "ซิ่งตาม Flow"},
-        "AMATA": {"target": "Whale", "qty": 0, "note": "นิคมเบรกเอาท์"},
-        "GULF": {"target": 55.0, "qty": 0, "note": "พลังงาน High Growth"},
-        "BAM": {"target": 9.00, "qty": 0, "note": "เครื่องจักรปันผล"}
-    }
+# 🏹 ข้อมูลทัพหลวงชุดใหม่ (จุดดักซุ่ม & เงื่อนไขเข้าตี)
+NEW_ARMY_CONFIG = {
+    "PTT": {"entry": 33.50, "target": 38.00, "type": "Dividend", "note": "ช้อนหลัง XD หรือเมื่อ Ratio < 0.5"},
+    "ROJNA": {"entry": 6.80, "target": "Whale", "type": "Growth", "note": "เข้าเมื่อ Ratio < 0.4 + RVOL > 1.5"},
+    "AMATA": {"entry": 24.50, "target": "Whale", "type": "Growth", "note": "นิคมเบรกเอาท์ตาม Fund Flow"},
+    "GULF": {"entry": 52.00, "target": 58.00, "type": "Tech/Power", "note": "ม้าเร็วข้ามต้าน 55.00"},
+    "BBL": {"entry": 147.00, "target": 155.00, "type": "Value", "note": "ทัพหลวงเกษียณ 10 ปี (NVDR ชอบ)"},
+    "BAM": {"entry": 8.80, "target": 9.50, "type": "CashFlow", "note": "เครื่องผลิตปันผลจ่ายค่าแอป"}
 }
 
 # ==========================================
-# 🐳 WHALE API SIMULATOR (ดึงออโต้ตาม ID)
+# 🐳 AUTO-WHALE MONITOR (Simulation Ready)
 # ==========================================
-def fetch_setsmart_auto(symbol, api_key):
-    """ 
-    จำลองการดึงข้อมูล Real-time 10 ระดับจาก SetSmart API 
-    ในสถานการณ์จริงจะใช้ requests.get(url, headers={'x-api-key': api_key})
-    """
+def fetch_whale_status(symbol):
     try:
-        # ดึงราคาปัจจุบันจาก Yahoo (Delay 15m)
+        # จำลองสถานะวาฬอิงจากข้อมูลตลาด (ในอนาคตใช้ API SetSmart จริง)
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1d", interval="1m")
         price = df['Close'].iloc[-1] if not df.empty else 0.0
         
-        # --- Logic ดึงวอลลุ่มออโต้ (Simulation) ---
-        # ในฐานะกุนซือ ผมจะจำลองแรงกระทำของวาฬอิงตามความผันผวนจริง
-        if symbol == "MTC":
-            # จำลองกำแพง 1.3 ล้านหุ้นที่พี่เห็นใน Streaming
-            bid_sum = 0.15 
-            off_sum = 1.35
-        elif symbol == "SIRI":
-            bid_sum = 12.8
-            off_sum = 4.2
-        else:
-            bid_sum = 5.0
-            off_sum = 2.0
-            
-        ratio = off_sum / bid_sum if bid_sum > 0 else 0
-        return {"price": price, "bid": bid_sum, "off": off_sum, "ratio": ratio}
-    except:
-        return None
+        # Simulation Logic: สุ่ม Ratio เพื่อดูการแจ้งเตือน
+        import random
+        sim_ratio = random.uniform(0.2, 4.0)
+        sim_rvol = random.uniform(0.5, 3.0)
+        
+        return {"price": price, "ratio": sim_ratio, "rvol": sim_rvol}
+    except: return None
 
 # ==========================================
-# 📊 SIDEBAR & CONTROL PANEL
+# 📊 MAIN DASHBOARD
 # ==========================================
-with st.sidebar:
-    st.title("🛡️ COMMAND CENTER")
-    with st.expander("🔑 กุญแจไอดี (ID VAULT)", expanded=not creds["api_key"]):
-        new_api = st.text_input("SetSmart API Key", value=creds["api_key"])
-        new_line = st.text_input("LINE Token", value=creds["line_token"], type="password")
-        new_uid = st.text_input("LINE User ID", value=creds["line_uid"])
-        if st.button("💾 บันทึกไอดีถาวร"):
-            save_secrets(new_api, new_line, new_uid)
-            st.rerun()
-            
-    st.markdown("---")
-    auto_refresh = st.toggle("🚀 AUTO-PILOT MODE", value=True)
-    refresh_rate = st.slider("ความถี่การสแกน (วินาที)", 5, 60, 10)
-    
-    st.metric("🏆 กำไรสะสมวันนี้", "560.00 บ.")
-    st.progress(0.65) # เป้าหมายแสนแรก
+st.sidebar.title("🛡️ ENTRY COMMANDER")
+auto_scan = st.sidebar.toggle("เปิดระบบสแกนจุดเข้าออโต้", value=True)
 
-# ==========================================
-# 🏹 MAIN BATTLE STATION
-# ==========================================
-st.title("🏹 GeminiBo v11.0: Auto-Whale Intelligence")
-st.caption(f"📡 สถานะ: {'🟢 ระบบสแกนออโต้ทำงาน' if auto_refresh else '⚪️ Manual Only'} | อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')}")
+st.title("🎯 New Army Entry Sniper v11.5")
+st.caption(f"📅 สมรภูมิวันที่: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
-# --- SECTION 1: RECOVERY ZONE ---
-st.subheader("🚩 สมรภูมิแก้ดอย (SIRI, HANA, MTC)")
+# --- SECTION: 🏹 จังหวะเข้าทำ (Entry Alerts) ---
+st.subheader("🚩 เรดาร์ดักซุ่ม (Entry Radar)")
 cols = st.columns(3)
-for i, (sym, info) in enumerate(WATCHLIST["RECOVERY"].items()):
-    data = fetch_setsmart_auto(sym, creds["api_key"])
-    with cols[i]:
-        with st.container(border=True):
-            st.header(f"🛡️ {sym}")
-            if data:
-                st.metric("ราคาตลาด", f"{data['price']:.2f}")
-                ratio = data['ratio']
-                
-                # แสดงสถานะวาฬออโต้
-                if ratio < 0.4:
-                    st.success(f"🚀 วาฬลาก! (Ratio: {ratio:.2f})")
-                elif ratio > 3.0:
-                    st.error(f"🚨 กำแพงขวาง! (Ratio: {ratio:.2f})")
-                else:
-                    st.info(f"⚖️ ดูเชิง (Ratio: {ratio:.2f})")
-                
-                st.write(f"📊 Bid {data['bid']}M / Off {data['off']}M")
-                st.caption(f"🎯 เป้า: {info['target']} | {info['note']}")
-            else:
-                st.write("กำลังเชื่อมต่อ API...")
 
-# --- SECTION 2: NEW ARMY SCANNER ---
-st.markdown("---")
-st.subheader("⚔️ ทัพหลวงชุดใหม่ (Auto-Scanner)")
-new_cols = st.columns(len(WATCHLIST["NEW_ARMY"]))
-for i, (sym, info) in enumerate(WATCHLIST["NEW_ARMY"].items()):
-    data = fetch_setsmart_auto(sym, creds["api_key"])
-    with new_cols[i]:
-        if data:
-            st.markdown(f"**{sym}**")
-            st.write(f"Price: {data['price']:.2f}")
-            # Indicator เล็กๆ
-            color = "green" if data['ratio'] < 0.5 else "red" if data['ratio'] > 2.0 else "gray"
-            st.markdown(f"<div style='width:100%; height:5px; background:{color}; border-radius:5px;'></div>", unsafe_allow_html=True)
-            st.caption(f"R: {data['ratio']:.2f}")
+for i, (sym, cfg) in enumerate(NEW_ARMY_CONFIG.items()):
+    data = fetch_whale_status(sym)
+    with cols[i % 3]:
+        with st.container(border=True):
+            st.markdown(f"### 🛡️ {sym}")
+            st.caption(f"ประเภท: {cfg['type']}")
+            
+            if data:
+                st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}")
+                
+                # Logic วิเคราะห์จุดเข้า
+                is_entry_price = data['price'] <= cfg['entry']
+                is_whale_in = data['ratio'] < 0.4
+                
+                if is_entry_price and is_whale_in:
+                    st.success("🚀 **SNIPER BUY!** วาฬลากในจุดรับ")
+                elif is_entry_price:
+                    st.warning("⚖️ **WAITING:** ราคาได้ แต่ Ratio ยังไม่สวย")
+                elif is_whale_in:
+                    st.info("🌊 **WHALE ACTIVE:** วาฬมาแต่ราคาสูงไปนิด")
+                else:
+                    st.write("⌛ **PATIENCE:** รอชัยภูมิที่ได้เปรียบ")
+                
+                st.markdown("---")
+                st.write(f"📊 Ratio: **{data['ratio']:.2f}** | RVOL: **{data['rvol']:.2f}**")
+                st.write(f"📍 จุดดักซุ่ม: **{cfg['entry']:.2f}**")
+                st.info(f"💡 {cfg['note']}")
+            else:
+                st.write("กำลังเชื่อมต่อตาทิพย์...")
 
 # ================= =========================
-# 🔄 AUTO REFRESH LOGIC
+# 🔄 AUTO REFRESH
 # ==========================================
-if auto_refresh:
-    time.sleep(refresh_rate)
+if auto_scan:
+    time.sleep(10)
     st.rerun()
