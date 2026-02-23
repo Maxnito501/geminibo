@@ -54,7 +54,7 @@ def fetch_live_data(symbol):
 # 📊 UI & CONTROL
 # ==========================================
 st.sidebar.title("🛡️ COMMAND CENTER")
-auto_scan = st.sidebar.toggle("ระบบสแกน Real-time (10s)", value=True)
+auto_scan = st.sidebar.toggle("ระบบสแกน Real-time (30s)", value=True)
 st.sidebar.markdown("---")
 st.sidebar.metric("🏆 กำไรสะสม (เป้า 990.-)", "639.00 บ.")
 st.sidebar.progress(0.65)
@@ -104,5 +104,5 @@ for i, (sym, cfg) in enumerate(NEW_ARMY_CONFIG.items()):
                 st.caption(cfg['note'])
 
 if auto_scan:
-    time.sleep(10)
+    time.sleep(30)
     st.rerun()
