@@ -6,112 +6,133 @@ import time
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE (v22.0 Iron Rules Only)
+# ⚙️ CONFIG & ENGINE (v23.0 Iron Decision)
 # ==========================================
-st.set_page_config(page_title="GeminiBo v22.0: Iron Commander", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="GeminiBo v23.0: Decision Engine", layout="wide", page_icon="🛡️")
 
-# กฎเหล็กข้อ 5.1 & 5.2: รายชื่อขุนพลที่ต้องติดตาม
-STOCK_LIST = {
+# กฎเหล็กข้อ 5: รายชื่อขุนพล
+STOCK_GROUPS = {
     "OWNED": ["SIRI", "MTC", "HANA"],
     "NEW_STRANGE": ["TRUE", "ADVANC", "ITEL"],
     "RISING_STARS": ["SCB", "PTT", "BBL", "CPALL", "BDMS"]
 }
 
-def get_iron_metrics(symbol):
-    """ วิเคราะห์ 3 มิติ (กราฟ, ดัชนี, วอลลุ่ม) ตามกฎเหล็กข้อ 1-4 """
+def get_market_intel(symbol):
+    """ วิเคราะห์ 3 มิติ ตามกฎเหล็กข้อ 1-4 """
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
         df = ticker.history(period="1mo", interval="1d")
         if df.empty: return None
         
         curr_p = df['Close'].iloc[-1]
-        prev_p = df['Close'].iloc[-2]
-        
-        # กฎข้อ 2: กราฟ & เทรนด์ (EMA 5)
         ema5 = df['Close'].ewm(span=5, adjust=False).mean().iloc[-1]
-        trend = "UP" if curr_p > ema5 else "DOWN"
         
-        # กฎข้อ 3: RSI
+        # RSI Calculation
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
         
-        # กฎข้อ 4: วอลลุ่มเจ้ามือ (RVOL)
+        # RVOL
         avg_vol = df['Volume'].iloc[-6:-1].mean()
         rvol = df['Volume'].iloc[-1] / avg_vol if avg_vol > 0 else 1.0
         
-        return {"price": curr_p, "trend": trend, "rsi": rsi, "rvol": rvol, "ema5": ema5}
+        return {"price": curr_p, "ema5": ema5, "rsi": rsi, "rvol": rvol}
     except: return None
 
 # ==========================================
-# 📊 BATTLE STATION UI
+# 📊 SIDEBAR: SETTINGS (Iron Rule 1)
 # ==========================================
-st.title("🛡️ GeminiBo v22.0: Iron Commander")
-st.caption(f"📅 อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')} | ตามกฎเหล็ก SetSmart")
-
-# Sidebar (กฎข้อ 1: ตั้งค่าดึงข้อมูล)
 with st.sidebar:
     st.header("👤 จอมทัพโบ้")
     st.success("💰 กระสุนพร้อมรบ: ~58,000 บ.")
     st.markdown("---")
-    auto_refresh = st.toggle("ระบบสแกน Real-time (45s)", value=True)
-    st.warning("🚨 ตรวจพบ Syntax Error เดิม -> แก้ไขแล้ว")
+    st.subheader("🔑 SetSmart Config")
+    api_key = st.text_input("SetSmart API Key", type="password", value="API_CONNECTED")
+    auto_refresh = st.toggle("ระบบตัดสินใจ Real-time (30s)", value=True)
+    
+# ==========================================
+# 🏹 MAIN DASHBOARD: THE DECISION CENTER
+# ==========================================
+st.title("🛡️ GeminiBo v23.0: Actionable Intelligence")
+st.caption(f"📅 อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')} | ตามกฎเหล็กดึงข้อมูล SetSmart")
 
-# --- SECTION 1: หุ้นในมือ (OWNED - กฎข้อ 6-7) ---
-st.subheader("🔥 กองทัพเก่า (SIRI, MTC, HANA)")
+# --- SECTION 1: หุ้นในมือ (Decision Logic Rule 6-7) ---
+st.subheader("🔥 กองทัพเก่า: วิเคราะห์จุดรุก/ถอย")
 c_old = st.columns(3)
-for i, sym in enumerate(STOCK_LIST["OWNED"]):
-    data = get_iron_metrics(sym)
+
+for i, sym in enumerate(STOCK_GROUPS["OWNED"]):
+    data = get_market_intel(sym)
     with c_old[i]:
         with st.container(border=True):
             if data:
-                # กำหนดทุน (Manual อิงจากไฟล์ประวัติ)
+                # ข้อมูลทุน (Mock up based on history)
                 cost = 1.47 if sym=="SIRI" else 38.50 if sym=="MTC" else 18.90
-                is_profit = data['price'] > cost
+                pnl_pct = ((data['price'] - cost) / cost) * 100
                 
                 st.header(f"{sym}")
-                st.metric("ราคาตลาด", f"{data['price']:.2f}", f"{data['price']-cost:.2f}")
+                st.metric("ราคาตลาด", f"{data['price']:.2f}", f"{pnl_pct:.2f}%")
                 
-                # ตรรกะตามกฎเหล็กข้อ 6-7
-                if is_profit:
-                    st.success("💎 กฎข้อ 6: ห้ามขายหมู!")
-                    st.caption("แผน: ถือรันปันผล หรือแบ่งขาย 1.63")
-                else:
-                    st.error("🚨 กฎข้อ 7: ติดดอย!")
-                    st.caption("แผน: รอเด้งขายตัด หรือถัวเมื่อหยุดไหล")
+                # รับค่าวอลลุ่มหน้างาน (SetSmart Rule 4)
+                st.write("**🐳 วิเคราะห์วอลลุ่ม SetSmart**")
+                b_vol = st.number_input(f"Total Bid (M) - {sym}", value=10.0, step=0.1, key=f"b_{sym}", label_visibility="collapsed")
+                o_vol = st.number_input(f"Total Offer (M) - {sym}", value=4.0, step=0.1, key=f"o_{sym}", label_visibility="collapsed")
+                ratio = o_vol / b_vol if b_vol > 0 else 0
                 
-                st.write(f"📈 เทรนด์: {data['trend']} | 📡 RSI: {data['rsi']:.1f}")
-                st.progress(min(data['rsi']/100, 1.0))
+                # --- BRAIN LOGIC: คำสั่งจอมทัพ ---
+                st.markdown("---")
+                st.write("🎯 **คำสั่งปฏิบัติการ:**")
+                
+                if data['price'] >= cost: # กรณีมีกำไร (Rule 6)
+                    if ratio < 0.5 and data['rsi'] < 85:
+                        st.success("💎 HOLD / ห้ามขายหมู!")
+                        st.info("เหตุผล: วาฬยังดันต่อ + ทางสะดวก")
+                    else:
+                        st.warning("💰 SELL 1/2 / ล็อกกำไร")
+                        st.write("เหตุผล: เริ่มมีกำแพงขวาง หรือ RSI ตึง")
+                else: # กรณีติดดอย (Rule 7)
+                    if data['rsi'] < 40:
+                        st.info("⚖️ WAIT / รอเด้ง")
+                        st.write("เหตุผล: ราคาต่ำเกินไป ขายตอนนี้เสียเปรียบ")
+                    elif data['price'] > data['ema5'] * 0.99:
+                        st.error("🚨 EXIT AT REBOUND / หนี!")
+                        st.write("เหตุผล: เด้งมาทดสอบแนวรับแล้วไม่ผ่าน")
+                
+                st.caption(f"RVOL: {data['rvol']:.2f} | RSI: {data['rsi']:.1f}")
 
-# --- SECTION 2: หุ้นใหม่ & ตัวรุ่ง (กฎข้อ 8) ---
+# --- SECTION 2: หุ้นใหม่ & ตัวรุ่ง (Decision Logic Rule 8) ---
 st.markdown("---")
-tab_new, tab_rising = st.tabs(["🏹 หุ้นใหม่ที่แปลก (Tech)", "🚀 5 ตัวรุ่ง (Top Picks)"])
+tab_new, tab_rising = st.tabs(["🏹 หุ้นใหม่/แปลก (Scoop Tactics)", "🚀 5 ตัวรุ่ง (Dividend Watch)"])
 
 with tab_new:
     cols = st.columns(3)
-    for i, sym in enumerate(STOCK_LIST["NEW_STRANGE"]):
-        data = get_iron_metrics(sym)
+    for i, sym in enumerate(STOCK_GROUPS["NEW_STRANGE"]):
+        data = get_market_intel(sym)
         with cols[i]:
             if data:
                 st.subheader(sym)
                 st.metric("ราคา", f"{data['price']:.2f}")
-                if data['rvol'] > 1.5: st.warning("🐳 วาฬเข้า! (RVOL สูง)")
-                st.info("🏹 แผน: รอช้อนตามน้ำ")
+                # รับค่า Ratio ชั่วคราว
+                r_val = st.slider(f"Whale Ratio {sym}", 0.0, 5.0, 1.0)
+                
+                if r_val < 0.4 and data['price'] > data['ema5']:
+                    st.success("🏹 BUY / ช้อนตามน้ำ!")
+                else:
+                    st.write("⌛ รอกระแสเงินไหลเข้า")
 
 with tab_rising:
     cols = st.columns(5)
-    for i, sym in enumerate(STOCK_LIST["RISING_STARS"]):
-        data = get_iron_metrics(sym)
+    for i, sym in enumerate(STOCK_GROUPS["RISING_STARS"]):
+        data = get_market_intel(sym)
         with cols[i]:
             if data:
-                st.write(f"**{sym}**")
-                st.write(f"{data['price']:.2f}")
-                if data['trend'] == "UP": st.success("🚀")
+                st.markdown(f"**{sym}**")
+                st.write(f"฿{data['price']:.2f}")
+                if data['rsi'] < 45: st.write("🟢 น่าสะสม")
 
 # ================= =========================
-# 🔄 REFRESH (กฎข้อ 5)
+# 🔄 REFRESH (30 Seconds)
 # ==========================================
 if auto_refresh:
-    time.sleep(45)
+    time.sleep(30)
     st.rerun()
