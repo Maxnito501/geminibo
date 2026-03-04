@@ -5,115 +5,134 @@ import pandas as pd
 from datetime import datetime
 
 # ==========================================
-# ⚙️ CONFIG & ENGINE
+# ⚙️ CONFIG & REBOUND ENGINE (v44.5)
 # ==========================================
 st.set_page_config(page_title="GeminiBo v44.5: The Sovereign", layout="wide", page_icon="🛡️")
 
-# ค่าธรรมเนียมเฉลี่ย
-FEE_RATE = 0.00168 
-
-def get_stock_data(symbol):
+def get_rebound_intel(symbol, avg_cost=0.0):
+    """ วิเคราะห์สัญญาณรีบาวด์ตาม Elliott Wave / MACD / RSI """
     try:
         ticker = yf.Ticker(f"{symbol}.BK")
-        df = ticker.history(period="1mo", interval="1d")
-        if df.empty: return None
+        df = ticker.history(period="3mo", interval="1d")
+        if df.empty or len(df) < 26: return None
         
         price = df['Close'].iloc[-1]
-        ema5 = df['Close'].ewm(span=5, adjust=False).mean().iloc[-1]
         
+        # 1. MACD Calculation
+        exp1 = df['Close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['Close'].ewm(span=26, adjust=False).mean()
+        macd = exp1 - exp2
+        signal = macd.ewm(span=9, adjust=False).mean()
+        
+        # 2. RSI Calculation
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
         
-        return {"price": price, "rsi": rsi, "ema5": ema5}
+        # 3. Wave & Rebound Logic
+        status = "⚖️ พักฐาน"
+        advice = "ถือนิ่งๆ รอดูเชิง"
+        color = "white"
+        
+        if rsi < 30:
+            status = "🌊 Wave C Bottom (Oversold)"
+            advice = "จุดสไนเปอร์! จ่อรีบาวด์แรง"
+            color = "blue"
+        elif macd.iloc[-1] > signal.iloc[-1] and macd.iloc[-2] <= signal.iloc[-2]:
+            status = "🚀 MACD Golden Cross"
+            advice = "มังกรเงยหน้า! เริ่มสะสมเพิ่มได้"
+            color = "green"
+        elif avg_cost > 0 and price < avg_cost * 0.92:
+            status = "🚨 แผลลึก (Waterfall)"
+            advice = "ห้ามถัวไม้เดียว! รอฐาน 5.2"
+            color = "red"
+
+        return {"price": price, "rsi": rsi, "macd": macd.iloc[-1], "status": status, "advice": advice, "color": color}
     except: return None
 
 # ==========================================
-# 📊 SIDEBAR: เสบียงและยอดทวงคืน
+# 📊 SIDEBAR: กระแสเงินสดและยอดทวงคืน
 # ==========================================
 with st.sidebar:
     st.header("🛡️ กองบัญชาการจอมทัพ")
-    # ข้อมูลกระแสเงินสดที่พี่โบ้แจ้งล่าสุด
-    dime_cash = 12783.0 # รวมจากการขาย JAS
+    # เสบียงพี่โบ้ล่าสุด
+    dime_cash = 8383.0 
+    inx_cash = 1000.0 # หลังหัก RMF 5,000
     ktb_cash = 18000.0
-    total_cash = dime_cash + ktb_cash
-    
-    st.metric("เสบียงรวม (Dime + KTB)", f"{total_cash:,.2f} บ.")
-    st.info(f"Dime: {dime_cash:,.2f} | KTB: {ktb_cash:,.2f}")
+    st.metric("เสบียง Dime (กระสุนหลัก)", f"{dime_cash:,.2f} บ.")
+    st.info(f"สำรอง KTB: {ktb_cash:,.2f} (ห้ามแตะ)")
     
     st.markdown("---")
-    # ยอดแผล MTC 1,000 + JAS 600
-    loss_target = 1600.0
-    st.subheader("🎯 ภารกิจทวงคืน")
-    st.error(f"ยอดติดลบสะสม: {loss_target:,.2f} บ.")
-    
-    # คำนวณความคืบหน้า (สมมติจากกำไร Unrealized)
-    st.caption("วินัย: ไม่จำเป็นไม่ถัว คัตได้คัต")
+    st.subheader("🎯 ภารกิจทวงคืนแสนแรก")
+    loss_target = 1600.0 # แผลสะสม MTC + JAS
+    st.error(f"ยอดแผลสะสม: {loss_target:,.2f} บ.")
+    st.caption("ปันผล PTT/SCB จะมาเย็บแผลนี้")
 
 # ================= =========================
 # 🏹 MAIN BATTLE STATION
 # ==========================================
 st.title("🛡️ GeminiBo v44.5: The Sovereign Mode")
-st.write(f"📡 สถานะ: {'🟢 ออนไลน์'} | อัปเดตล่าสุด: {datetime.now().strftime('%H:%M:%S')}")
+st.write(f"📡 ออนไลน์ | อัปเดตขุนพล 10 ตัว | วันที่: {datetime.now().strftime('%d/%m/%Y')}")
 
-# รายชื่อหุ้นในมือและหุ้นเป้าหมาย
-owned_list = ["PTT", "SIRI", "SCB", "TISCO", "HMPRO", "PTG"]
-hunting_list = ["LH", "BH", "TRUE", "CPF"]
+# (กฎข้อ 5) รายชื่อขุนพลจริงของพี่โบ้
+my_army = [
+    {"sym": "PTT", "qty": 100, "avg": 33.00},
+    {"sym": "SIRI", "qty": 2300, "avg": 1.47},
+    {"sym": "SCB", "qty": 25, "avg": 135.50},
+    {"sym": "TISCO", "qty": 100, "avg": 112.50},
+    {"sym": "AOT", "qty": 200, "avg": 54.50},
+    {"sym": "BH", "qty": 50, "avg": 186.00},
+    {"sym": "CPAXT", "qty": 300, "avg": 16.30},
+    {"sym": "WHA", "qty": 1000, "avg": 4.18},
+    {"sym": "PTG", "qty": 200, "avg": 9.60},
+    {"sym": "HMPRO", "qty": 400, "avg": 7.05}
+]
 
-tab1, tab2 = st.tabs(["🔥 ขุนพลในสนาม (Owned)", "🏹 หน่วยล่าเป้าหมาย (Hunting)"])
+# (หุ้นสวนกระแสสงคราม 3 ตัว)
+war_shields = ["PTTEP", "BDMS", "CPALL"]
 
-with tab1:
+t1, t2 = st.tabs(["🔥 ขุนพลในสนาม (Owned)", "🛡️ หน่วยสอดแนมต้านสงคราม (War Shields)"])
+
+with t1:
+    st.subheader("วิเคราะห์จุดรีบาวด์รายตัว")
     cols = st.columns(3)
-    for i, sym in enumerate(owned_list):
-        data = get_stock_data(sym)
+    for i, stock in enumerate(my_army):
+        data = get_rebound_intel(stock['sym'], stock['avg'])
         with cols[i % 3]:
             with st.container(border=True):
-                st.subheader(sym)
+                st.markdown(f"### {stock['sym']}")
                 if data:
                     st.metric("ราคาตลาด", f"{data['price']:.2f}")
-                    st.write(f"RSI: {data['rsi']:.1f}")
-                    
-                    # คำสั่งยุทธการ
-                    if sym == "PTT":
-                        st.info("⌛ พรุ่งนี้ XD: ถือรับปันผล 1.40 บ.")
-                    elif sym == "SIRI":
-                        st.success("💎 ทุน 1.47 แกร่งมาก ถือรับทรัพย์")
-                    elif data['rsi'] < 30:
-                        st.warning("⚖️ ก้นเหว: รอปลาบยอดรีบาวด์")
-                    else:
-                        st.write("📡 เฝ้าตามวินัย")
-                else:
-                    st.write("กำลังดึงข้อมูล...")
+                    st.markdown(f"**สถานะ:** :{data['color']}[{data['status']}]")
+                    st.write(f"💬 {data['advice']}")
+                    st.caption(f"ทุนพี่: {stock['avg']:.2f} | RSI: {data['rsi']:.1f}")
+                else: st.write("รอดึงข้อมูล...")
 
-with tab2:
-    st.subheader("เป้าหมายใหม่: LH และขุนพลต้านสงคราม")
-    hcols = st.columns(2)
-    for i, sym in enumerate(hunting_list):
-        data = get_stock_data(sym)
-        with hcols[i % 2]:
+with t2:
+    st.subheader("3 ขุนพลหลบภัยยามสงคราม")
+    wcols = st.columns(3)
+    for i, sym in enumerate(war_shields):
+        data = get_rebound_intel(sym)
+        with wcols[i]:
             with st.container(border=True):
                 st.header(sym)
                 if data:
                     st.metric("ราคาปัจจุบัน", f"{data['price']:.2f}")
-                    if sym == "LH":
-                        st.success("🎯 เป้าช้อน: 3.98 - 4.00 (Yield 7.5%)")
-                    elif sym == "BH":
-                        st.info("🏥 จุดรับสะสม: 168.0 - 170.0")
-                    
-                    if data['rsi'] < 35:
-                        st.warning("🏹 สัญญาณสไนเปอร์: ราคาโดนกดขี่!")
-                else:
-                    st.write("รอกระแสเงิน...")
+                    if sym == "PTTEP": st.success("⛽ War Beneficiary (น้ำมันพุ่ง)")
+                    if sym == "BDMS": st.info("🏥 Safe Haven (โรงพยาบาลแกร่ง)")
+                    if sym == "CPALL": st.warning("🛒 Defensive (คนต้องกินต้องใช้)")
+                    st.write(f"RSI: {data['rsi']:.1f}")
+                else: st.write("รอกระแสเงิน...")
 
 st.markdown("---")
-st.markdown("""
-<div style="background-color: #1e293b; padding: 20px; border-radius: 15px; border-left: 5px solid #3b82f6;">
-    <h4 style="color: white; margin-bottom: 10px;">สาส์นจอมทัพ: แผนกู้เสบียง</h4>
-    <p style="color: #cbd5e1; font-style: italic; font-size: 14px;">
-        "พี่โบ้ครับ เราล้างพอร์ต MTC และ JAS เพื่อเอาเงินสด 12,000+ ใน Dime กลับมา... <br>
-        พรุ่งนี้เรามีหน้าที่แค่ 'ถือนิ่งๆ' รับปันผล PTT และตั้งเบ็ดตกมังกร LH ที่ราคา 4.00 ครับ... <br>
-        ยอดเสีย 1,600 บาท จะหายไปเมื่อปันผลและกำไรจาก LH ไหลเข้าพอร์ตครับ!"
+st.markdown(f"""
+<div style="background-color: #1e293b; padding: 25px; border-radius: 20px; border-left: 8px solid #f43f5e;">
+    <h3 style="color: white; margin-bottom: 10px;">🛡️ สาส์นจอมทัพ: แผนรบ 5 มีนาคม (PTT XD)</h3>
+    <p style="color: #cbd5e1; font-style: italic; font-size: 15px;">
+        "พี่โบ้ครับ พรุ่งนี้คือวันรับเงินสดจาก PTT... เรามี BH, AOT และ CPAXT เป็นฐานใหม่ที่แข็งแกร่ง <br>
+        แผนคือ: ใช้เงิน JAS (4,400) รอสอย AOT ที่ก้นเหว 47.00 และเฝ้า BH ที่ 170.00... <br>
+        ในสงคราม คนใจนิ่งคือผู้ชนะ เราจะใช้ 'ปันผล' เป็นเกราะ และใช้ 'กำไร' เป็นดาบ ทวงแสนแรกคืนมาครับ!"
     </p>
 </div>
 """, unsafe_allow_html=True)
